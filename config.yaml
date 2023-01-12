@@ -1,0 +1,95 @@
+# pytorch_lightning==1.8.6
+seed_everything: 5
+trainer:
+  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7fa60a076b90>
+  enable_checkpointing: true
+  callbacks: null
+  default_root_dir: null
+  gradient_clip_val: null
+  gradient_clip_algorithm: null
+  num_nodes: 1
+  num_processes: null
+  devices: 1
+  gpus: null
+  auto_select_gpus: false
+  tpu_cores: null
+  ipus: null
+  enable_progress_bar: true
+  overfit_batches: 0.0
+  track_grad_norm: -1
+  check_val_every_n_epoch: 1
+  fast_dev_run: false
+  accumulate_grad_batches: null
+  min_epochs: 1
+  max_steps: -1
+  min_steps: null
+  max_time: null
+  limit_train_batches: null
+  limit_val_batches: null
+  limit_test_batches: null
+  limit_predict_batches: null
+  val_check_interval: null
+  log_every_n_steps: 1
+  accelerator: cpu
+  strategy: null
+  sync_batchnorm: false
+  precision: 32
+  enable_model_summary: true
+  num_sanity_val_steps: 0
+  resume_from_checkpoint: null
+  profiler: null
+  benchmark: null
+  deterministic: null
+  reload_dataloaders_every_n_epochs: 0
+  auto_lr_find: false
+  replace_sampler_ddp: true
+  detect_anomaly: false
+  auto_scale_batch_size: false
+  plugins: null
+  amp_backend: native
+  amp_level: null
+  move_metrics_to_cpu: false
+  multiple_trainloader_mode: max_size_cycle
+  inference_mode: true
+model:
+  acquisition_class: ucb
+  beta: 0.1
+  top_n:
+  - 1
+  - 3
+  - 5
+  - 10
+data:
+  data_path: data/additives_reactions.csv
+  reaction_plate: 1
+  base_additive: N#N
+  representation: drfp
+  feature_dimension: 2048
+  featurize_column: reaction_smiles
+  exclude_n_largest: 0
+  scale_by_baseline: true
+  noise_calc: var
+n_iters: 100
+n_trials: 20
+data_selection:
+  init_method: k-medoids++
+  metric: jaccard
+  n_clusters: 10
+  seed: null
+kernel:
+  class_path: additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel
+  init_args:
+    metric: ''
+    ard_num_dims: null
+    batch_shape: torch.Size([])
+    active_dims: null
+    lengthscale_prior: null
+    lengthscale_constraint: null
+    eps: 1.0e-06
+surrogate_model:
+  class_path: additive_bo.surrogate_models.gp.CustomHeteroskedasticGP
+  init_args:
+    standardize: true
+    normalize: false
+    zero_mean: false
+    input_warping: false

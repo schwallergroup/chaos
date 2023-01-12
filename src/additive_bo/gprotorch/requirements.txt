@@ -1,0 +1,9 @@
+gpytorch
+graphein==1.4.0
+numpy
+pandas
+pytest
+rdkit-pypi
+scikit-learn
+selfies
+tqdm

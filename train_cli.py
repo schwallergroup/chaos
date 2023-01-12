@@ -1,8 +1,19 @@
 import argparse
 import os
+import random
+import string
 
 import gpytorch
 import wandb
+from additive_bo.bo.module import BoModule
+from additive_bo.data.module import BOAdditivesDataModule
+from additive_bo.data_init_selection.clustering import BOInitDataSelection
+from additive_bo.surrogate_models.gp import (  # noqa F401
+    GP,
+    FixedGP,
+    HeteroskedasticGP,
+)
+from additive_bo.utils import flatten
 from botorch.models.model import Model as BaseModel
 from pytorch_lightning.callbacks import Timer
 from pytorch_lightning.cli import (
@@ -11,11 +22,6 @@ from pytorch_lightning.cli import (
     SaveConfigCallback,
 )
 from pytorch_lightning.loggers import WandbLogger
-
-from additive_bo.bo.module import BoModule
-from additive_bo.data.module import BOAdditivesDataModule
-from additive_bo.data_init_selection.clustering import BOInitDataSelection
-from additive_bo.surrogate_models.gp import GP, FixedGP, HeteroskedasticGP  # noqa F401
 
 
 def get_mol_or_rxn_smile(representation):
@@ -49,18 +55,19 @@ class MyLightningCli(LightningCLI):
         parser.link_arguments(
             "data.train_y", "surrogate_model.init_args.train_y", apply_on="instantiate"
         )
+        parser.link_arguments(
+            "data.noise", "surrogate_model.init_args.noise_val", apply_on="instantiate"
+        )
+        parser.link_arguments("data", "model.data", apply_on="instantiate")
 
-        # parser.link_arguments('data', 'model.data', apply_on='instantiate')
         parser.link_arguments("surrogate_model", "model.model", apply_on="instantiate")
         parser.link_arguments("n_iters", "trainer.max_epochs")
+
         return super().add_arguments_to_parser(parser)
 
     def before_instantiate_classes(self) -> None:
-        print("BEFORE ", self.config)
+        # print("BEFORE ", self.config)
         return super().before_instantiate_classes()
-
-
-from additive_bo.utils import flatten
 
 
 class WandbSaveConfigCallback(SaveConfigCallback):
@@ -85,9 +92,6 @@ def reset_wandb_env():
             del os.environ[k]
 
 
-import random
-import string
-
 letters = string.ascii_lowercase
 
 
@@ -98,33 +102,45 @@ def generate_group_name():
 def cli_main():
 
     group = generate_group_name()
-
-    for seed in range(20):
-        # reset_wandb_env()
-        cli = MyLightningCli(
-            model_class=BoModule,
-            datamodule_class=BOAdditivesDataModule,
-            run=False,
-            save_config_callback=WandbSaveConfigCallback,
-            save_config_kwargs={"overwrite": True},
-            trainer_defaults={
-                "logger": WandbLogger(  # save_dir=f'./wandb-save-dir/{group}',
-                    project="additives-debugging"
-                ),  # , reinit=True),
-                "log_every_n_steps": 1,
-                "min_epochs": 1,
-                "max_steps": -1,
-                "accelerator": "cpu",
-                "devices": 1,
-                #    'reload_dataloaders_every_n_epochs': 1,
-                "num_sanity_val_steps": 0,
-                "callbacks": [Timer()],
-            },
-            # save_config_overwrite=True,
-            seed_everything_default=seed,
-        )
-        cli.trainer.fit(cli.model, cli.datamodule)
-        wandb.finish(quiet=True)
+    # seed=0
+    # n_count=0
+    # while n_count<20:
+    # for seed in range(20):
+    # reset_wandb_env()
+    cli = MyLightningCli(
+        model_class=BoModule,
+        datamodule_class=BOAdditivesDataModule,
+        run=False,
+        save_config_callback=WandbSaveConfigCallback,
+        save_config_kwargs={"overwrite": True},
+        trainer_defaults={
+            "logger": WandbLogger(  # save_dir=f'./wandb-save-dir/{group}',
+                project="additives-debugging"
+            ),  # , reinit=True),
+            "log_every_n_steps": 1,
+            "min_epochs": 1,
+            "max_steps": -1,
+            "accelerator": "cpu",
+            "devices": 1,
+            # "reload_dataloaders_every_n_epochs": 1,
+            "num_sanity_val_steps": 0,
+            # "callbacks": [Timer()],
+        },
+        # save_config_overwrite=True,
+        # seed_everything_default=seed,
+    )
+    done = False
+    while not done:
+        try:
+            cli.trainer.fit(cli.model)  # , cli.datamodule)
+            done = True
+            # n_count+=1
+        except:
+            print("Seed skipped -- running the next one")
+            cli.seed_everything_default += 20
+            # wandb.finish(quiet=True)
+        finally:
+            wandb.finish(quiet=True)
 
     # wandb.join()
 

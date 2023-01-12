@@ -1,3 +1,4 @@
+import copy
 from typing import Any, List, Optional, Union
 
 import botorch.acquisition
@@ -9,32 +10,44 @@ import plotly.express as px
 import pytorch_lightning as pl
 import torch
 import wandb
+from additive_bo.data.utils import torch_delete_rows
+from additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel import (
+    TanimotoKernel,
+)
+from additive_bo.surrogate_models.gp import (
+    GP,
+    CustomHeteroskedasticGP,
+    FixedGP,
+    HeteroskedasticGP,
+)
 from botorch import fit_gpytorch_model
 from botorch.acquisition import (
     ExpectedImprovement,
     NoisyExpectedImprovement,
     UpperConfidenceBound,
 )
-from gprotorch.kernels.fingerprint_kernels.tanimoto_kernel import TanimotoKernel
 from gpytorch import ExactMarginalLogLikelihood
-from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
+from pytorch_lightning.utilities.types import (
+    EVAL_DATALOADERS,
+    TRAIN_DATALOADERS,
+)
 from sklearn.manifold import TSNE
 from torchmetrics import MeanAbsoluteError, MeanSquaredError, R2Score
-
-from additive_bo.data.utils import torch_delete_rows
-from additive_bo.surrogate_models.gp import GP, FixedGP, HeteroskedasticGP
 
 
 class BoModule(pl.LightningModule):
     def __init__(
         self,
-        model: Union[GP, FixedGP, HeteroskedasticGP],
+        data: pl.LightningDataModule,
+        model: Union[GP, FixedGP, HeteroskedasticGP, CustomHeteroskedasticGP],
         acquisition_class: str = "ucb",
         beta: float = 0.1,
         top_n: List[int] = None,
     ):
         super().__init__()
+        print(model.noise_val, "NOISE VALUE")
         self.top_count = None
+        self.data = data
         self.model = model
         self.acquisition = None
         self.top_n = top_n
@@ -66,59 +79,66 @@ class BoModule(pl.LightningModule):
             self.model.load_state_dict(state_dict)
 
     def count_top_n_in_init_data(self, n):
-        top_nth_yield = self.trainer.datamodule.get_nth_largest_yield(n=n)
-        mask = self.trainer.datamodule.train_y >= top_nth_yield
+        top_nth_yield = self.data.get_nth_largest_yield(n=n)  # self.trainer.datamodule.
+        mask = self.data.train_y >= top_nth_yield  # self.trainer.datamodule.
         return sum(mask)
 
     def on_train_start(self) -> None:
         self.logger.experiment.summary[
             "global_optimum"
-        ] = self.trainer.datamodule.objective_optimum
+        ] = self.data.objective_optimum  # self.trainer.datamodule.
+        self.logger.experiment.config.update(
+            {"surrogate_model.init_args.noise_val": self.model.noise_val},
+            allow_val_change=True,
+        )
         self.top_count = [self.count_top_n_in_init_data(n) for n in self.top_n]
 
     def visualize_latent_space(self, method="pca"):
-        fig = self.trainer.datamodule.plot_latent_space(method=method)
+        fig = self.data.plot_latent_space(method=method)  # self.trainer.datamodule.
         self.logger.log_image(key="latent-space", images=[wandb.Image(fig)])
 
     def plot_predicted_vs_true_observation_noise(self):
         # fig, ax = plt.subplots(1, 1, figsize=(6, 4))
         with torch.no_grad():
             posterior_train = self.model.posterior(
-                self.trainer.datamodule.train_x, observation_noise=True
+                self.data.train_x, observation_noise=True  # self.trainer.datamodule.
             )
             posterior_test = self.model.posterior(
-                self.trainer.datamodule.heldout_x, observation_noise=True
+                self.data.heldout_x, observation_noise=True  # self.trainer.datamodule.
             )
 
             mean_train = posterior_train.mean
             mean_test = posterior_test.mean
 
             pred_error = (
-                (self.trainer.datamodule.heldout_y.squeeze() - mean_test.squeeze()) ** 2
+                (self.data.heldout_y.squeeze() - mean_test.squeeze())
+                ** 2  # self.trainer.datamodule.
             ).mean()
             print(f"Cross-validation error: {pred_error : 4.2}")
 
             # get lower and upper confidence bounds
             # lower, upper = posterior.mvn.confidence_region()
 
-        # scatterplot of predicted versus test
-        _, axes = plt.subplots(1, 1, figsize=(6, 4))
-        # plt.plot([-1.5, 1.5], [-1.5, 1.5], 'k', label="true objective", linewidth=2)
-        # plt.figure()
-        axes.scatter(
-            self.trainer.datamodule.heldout_y.squeeze(),
-            mean_test.squeeze(),
-            color="blue",
-        )
-        axes.scatter(
-            self.trainer.datamodule.train_y.squeeze(), mean_train.squeeze(), color="red"
-        )
-        axes.ticklabel_format(useOffset=False)
+            # scatterplot of predicted versus test
+            _, axes = plt.subplots(1, 1, figsize=(6, 4))
+            # plt.plot([-1.5, 1.5], [-1.5, 1.5], 'k', label="true objective", linewidth=2)
+            # plt.figure()
+            axes.scatter(
+                self.data.heldout_y.squeeze(),  # self.trainer.datamodule.
+                mean_test.squeeze(),
+                color="blue",
+            )
+            axes.scatter(
+                self.data.train_y.squeeze(),
+                mean_train.squeeze(),
+                color="red",  # self.trainer.datamodule.
+            )
+            axes.ticklabel_format(useOffset=False)
 
-        plt.xlabel("Actual")
-        plt.ylabel("Predicted")
+            plt.xlabel("Actual")
+            plt.ylabel("Predicted")
 
-        self.logger.log_image(key="pred-vs-actual", images=[wandb.Image(axes)])
+            self.logger.log_image(key="pred-vs-actual", images=[wandb.Image(axes)])
 
     def training_step(self, batch, batch_idx):
         # self.visualize_latent_space('tsne')
@@ -126,14 +146,19 @@ class BoModule(pl.LightningModule):
         # train_x, train_y = train_x.squeeze(0), train_y.squeeze(0)
 
         train_x, train_y = (
-            self.trainer.datamodule.train_x,
-            self.trainer.datamodule.train_y,
+            self.data.train_x,  # self.trainer.datamodule
+            self.data.train_y,  # self.trainer.datamodule
         )
         self.log("train/best_so_far", torch.max(train_y))
+        prev_state = self.model.state_dict()
         self.model = self.model.reinit(train_x=train_x, train_y=train_y)
-        self.initialize_mll(self.model.likelihood, self.model)
-        # self.mll.to(self.device)
-        fit_gpytorch_model(self.mll, max_retries=10)
+        self.initialize_mll(likelihood=self.model.likelihood, model=self.model)
+        self.model.load_state_dict(
+            {k: v for k, v in prev_state.items() if "outcome_transform" not in k},
+            strict=False,
+        )
+
+        fit_gpytorch_model(self.mll, max_retries=1)
 
         for param_name, param in self.model.named_parameters():
             try:
@@ -151,7 +176,6 @@ class BoModule(pl.LightningModule):
         # mean_values = []
         # uncertainties = []
 
-        self.plot_predicted_vs_true_observation_noise()
         # self._optimize_acqf_and_get_observation()
 
         # ovo gde
@@ -163,32 +187,53 @@ class BoModule(pl.LightningModule):
         # self.initialize_mll()
         # self.model.load_state_dict({k: v for k, v in prev_state.items() if "outcome_transform" not in k}, strict=False)
 
-    def validation_step(self, batch, *args, **kwargs):
-        # heldout_x, heldout_y = batch
-        # heldout_x, heldout_y = heldout_x.squeeze(0), heldout_y.squeeze(0)
+        # heldout_x, heldout_y = (
+        #     self.trainer.datamodule.heldout_x,
+        #     self.trainer.datamodule.heldout_y,
+        # )
+
+        self.plot_predicted_vs_true_observation_noise()
+
+        # self.optimize_acqf_and_get_observation(heldout_x, heldout_y)
+
+        # prev_state = self.model.state_dict()
+        # self.model.load_state_dict(
+        #     {k: v for k, v in prev_state.items() if "outcome_transform" not in k},
+        #     strict=False,
+        # )
 
         heldout_x, heldout_y = (
-            self.trainer.datamodule.heldout_x,
-            self.trainer.datamodule.heldout_y,
+            self.data.heldout_x,  # self.trainer.datamodule.
+            self.data.heldout_y,  # self.trainer.datamodule.
         )
-
         self.optimize_acqf_and_get_observation(heldout_x, heldout_y)
-        prev_state = self.model.state_dict()
-        self.model.load_state_dict(
-            {k: v for k, v in prev_state.items() if "outcome_transform" not in k},
-            strict=False,
-        )
+
+    # def validation_step(self, batch, *args, **kwargs):
+    #     heldout_x, heldout_y = batch
+    #     heldout_x, heldout_y = heldout_x.squeeze(0), heldout_y.squeeze(0)
+
+    #     # heldout_x, heldout_y = (
+    #     #     self.trainer.datamodule.heldout_x,
+    #     #     self.trainer.datamodule.heldout_y,
+    #     # )
+
+    #     self.optimize_acqf_and_get_observation(heldout_x, heldout_y)
+    #     # prev_state = self.model.state_dict()
+    #     # self.model.load_state_dict(
+    #     #     {k: v for k, v in prev_state.items() if "outcome_transform" not in k},
+    #     #     strict=False,
+    #     # )
 
     def on_train_end(self) -> None:
         for i, top_n_count in enumerate(self.top_count):
             self.logger.experiment.summary[f"top_{self.top_n[i]}_count"] = top_n_count
         self.logger.experiment.finish()
 
-    # def train_dataloader(self) -> TRAIN_DATALOADERS:
-    #     return self.trainer.datamodule.train_dataloader()
+    def train_dataloader(self) -> TRAIN_DATALOADERS:
+        return self.data.train_dataloader()  # self.trainer.datamodule
 
-    # def val_dataloader(self) -> EVAL_DATALOADERS:
-    #     return self.trainer.datamodule.val_dataloader()
+    def val_dataloader(self) -> EVAL_DATALOADERS:
+        return self.data.val_dataloader()  # self.trainer.datamodule
 
     # def on_validation_end(self) -> None:
     #     # reinit model
@@ -238,13 +283,14 @@ class BoModule(pl.LightningModule):
     def construct_acquisition(self):
         if self.acquisition_class == "ei":
             self.acquisition = ExpectedImprovement(
-                model=self.model, best_f=self.trainer.datamodule.train_y.max()
+                model=self.model,
+                best_f=self.data.train_y.max(),  # self.trainer.datamodule
             )
 
         elif self.acquisition_class == "nei":
             self.acquisition = NoisyExpectedImprovement(
                 model=self.model,
-                X_observed=self.trainer.datamodule.train_x,
+                X_observed=self.data.train_x,  # self.trainer.datamodule
                 num_fantasies=100,
             )
 
@@ -270,6 +316,9 @@ class BoModule(pl.LightningModule):
 
         return best_idx
 
+    # todo
+    # def update_train_heldout_data()
+
     def optimize_acqf_and_get_observation(self, heldout_x, heldout_y):
 
         if self.acquisition_class == "random":
@@ -281,29 +330,25 @@ class BoModule(pl.LightningModule):
         new_x = heldout_x[best_idx].unsqueeze(-2)  # add batch dimension
         new_y = heldout_y[best_idx].unsqueeze(-1)  # add output dimension
 
-        self.trainer.datamodule.train_indexes.append(best_idx)
+        self.data.train_indexes.append(best_idx)  # self.trainer.datamodule
 
         for i, n in enumerate(self.top_n):
-            if new_y >= self.trainer.datamodule.get_nth_largest_yield(n):
+            if new_y >= self.data.get_nth_largest_yield(n):  # self.trainer.datamodule
                 self.top_count[i] += 1
         self.log("train/suggestion", new_y)
 
         # update heldout set points
         # delete the selected input and value from the heldout set.
-        self.trainer.datamodule.heldout_x = torch_delete_rows(
-            self.trainer.datamodule.heldout_x, [best_idx]
-        )
-        self.trainer.datamodule.heldout_y = torch_delete_rows(
-            self.trainer.datamodule.heldout_y, [best_idx]
-        )
+        self.data.heldout_x = torch_delete_rows(self.data.heldout_x, [best_idx])
+        self.data.heldout_y = torch_delete_rows(self.data.heldout_y, [best_idx])
 
         # update training points
         # self.trainer.datamodule.train_x = torch.cat([self.trainer.datamodule.train_x, new_x.to('cpu')])
         # self.trainer.datamodule.train_y = torch.cat([self.trainer.datamodule.train_y, new_y.to('cpu')])
 
-        self.trainer.datamodule.train_x = torch.cat(
-            [self.trainer.datamodule.train_x, new_x]
+        self.data.train_x = torch.cat(  # self.trainer.datamodule
+            [self.data.train_x, new_x]
         )
-        self.trainer.datamodule.train_y = torch.cat(
-            [self.trainer.datamodule.train_y, new_y]
+        self.data.train_y = torch.cat(  # self.trainer.datamodule
+            [self.data.train_y, new_y]
         )

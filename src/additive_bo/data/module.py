@@ -7,16 +7,19 @@ import pandas as pd
 import plotly.express as px
 import pytorch_lightning as pl
 import torch
-from gprotorch.dataloader import DataLoaderMP, ReactionLoader
-from matplotlib import pyplot as plt
-from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-from torch.utils.data import DataLoader
-
 from additive_bo.data.dataset import DynamicSet, SingleSampleDataset
 from additive_bo.data.utils import torch_delete_rows
 from additive_bo.data_init_selection.clustering import BOInitDataSelection
+from additive_bo.gprotorch.dataloader import DataLoaderMP, ReactionLoader
+from matplotlib import pyplot as plt
+from pytorch_lightning.utilities.types import (
+    EVAL_DATALOADERS,
+    TRAIN_DATALOADERS,
+)
+from scipy.stats import sem
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from torch.utils.data import DataLoader
 
 
 class BOAdditivesDataModule(pl.LightningDataModule):
@@ -33,8 +36,10 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         exclude_n_largest: int = 0,
         scale_by_baseline: bool = False,
         init_selection_method: BOInitDataSelection = None,
+        noise_calc: str = "se",
     ):
         super().__init__()
+        self.noise_calc = noise_calc
         self.objective_optimum: int = None
         # todo do I need scaling here
         self.x: torch.tensor = None
@@ -76,6 +81,11 @@ class BOAdditivesDataModule(pl.LightningDataModule):
                 )
                 .reset_index()
             )
+            self.base_reactions = (
+                self.base_reactions["UV210_Prod AreaAbs"]
+                / self.base_reactions["UV210_Prod AreaAbs"].mean()
+            )
+
         else:
             self.additives_reactions = (
                 reaction_data[[self.featurize_column, "UV210_Prod AreaAbs"]]
@@ -83,6 +93,14 @@ class BOAdditivesDataModule(pl.LightningDataModule):
                 .apply(lambda x: x[["UV210_Prod AreaAbs"]].mean())
                 .reset_index()
             )
+
+    def calculate_noise_error(self):
+        if self.noise_calc == "se":
+            self.noise = sem(self.base_reactions.values)
+        elif self.noise_calc == "var":
+            self.noise = self.base_reactions.var()
+        elif self.noise_calc == "std":
+            self.noise = self.base_reactions.std()
 
     def remove_duplicates(self):
         __, inv, counts = torch.unique(
@@ -137,6 +155,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         self.setup_data_by_reaction_plate()
+        self.calculate_noise_error()
         self.featurize()
         self.remove_duplicates()
 
@@ -162,7 +181,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             self.y, [baseline_reaction_index] + init_indexes
         )  # y[heldout_indices]
 
-        print(self.trainer, "SELF TRAINER JEBEM TI MATER")
+        # print(self.trainer, "SELF TRAINER JEBEM TI MATER")
         # self.train_x = self.train_x.to('cuda')
         # self.train_y = self.train_y.to('cuda')
 
