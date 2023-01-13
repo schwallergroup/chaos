@@ -5,7 +5,7 @@ channels:
  - pytorch
 #  - pytorch3d
 dependencies:
- - python=3.7
+ - python=3.8
  - pip
  - numpy
  - pandas
@@ -13,7 +13,7 @@ dependencies:
  - pytorch
  - scikit-learn
  - rdkit
- - botorch
+#  - botorch
 #  - pytorch3d
  - pip:
     - -e .
@@ -21,10 +21,17 @@ dependencies:
     # - rxnfp # --install-option="--no-deps"
     - rxnfp
     - drfp
-    # - selfies
+    - selfies
     # - graphein==1.4.0
     # - torch-geometric==1.7.2
     - wandb
     - pytorch-lightning
     - scikit-learn-extra
     - jsonargparse[signatures]
+    - git+https://github.com/cornellius-gp/gpytorch.git
+   #  - git+https://github.com/pytorch/botorch.git
+ - pre_commit
+   # additional installs:
+   # git+https://github.com/pytorch/botorch.git
+   # pip install graphein==1.4.0 --no-deps
+   # pip install selfies

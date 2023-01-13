@@ -1,7 +1,9 @@
 import argparse
+import logging
 import os
 import random
 import string
+import sys
 
 import gpytorch
 import wandb
@@ -22,6 +24,8 @@ from pytorch_lightning.cli import (
     SaveConfigCallback,
 )
 from pytorch_lightning.loggers import WandbLogger
+
+logging.getLogger("PIL").setLevel(logging.WARNING)
 
 
 def get_mol_or_rxn_smile(representation):
@@ -99,14 +103,8 @@ def generate_group_name():
     return "".join(random.choice(letters) for i in range(10))
 
 
-def cli_main():
-
-    group = generate_group_name()
-    # seed=0
-    # n_count=0
-    # while n_count<20:
-    # for seed in range(20):
-    # reset_wandb_env()
+def start_new_run(seed):
+    print(sys.argv)
     cli = MyLightningCli(
         model_class=BoModule,
         datamodule_class=BOAdditivesDataModule,
@@ -126,21 +124,71 @@ def cli_main():
             "num_sanity_val_steps": 0,
             # "callbacks": [Timer()],
         },
+        args=sys.argv.append(f"--seed={seed}"),
         # save_config_overwrite=True,
-        # seed_everything_default=seed,
+        # seed_everything_default=seed
     )
-    done = False
-    while not done:
+    return cli
+
+
+def cli_main():
+
+    group = generate_group_name()
+    # seed=1
+    # n_count=0
+    seeds = list(range(1, 21))
+    # while n_count<20:
+    # for seed in range(20):
+    # reset_wandb_env()
+    while len(seeds) > 0:
+        seed = seeds.pop()
+        cli = MyLightningCli(
+            model_class=BoModule,
+            datamodule_class=BOAdditivesDataModule,
+            run=False,
+            save_config_callback=WandbSaveConfigCallback,
+            save_config_kwargs={"overwrite": True},
+            trainer_defaults={
+                "logger": WandbLogger(  # save_dir=f'./wandb-save-dir/{group}',
+                    project="additives-debugging"
+                ),  # , reinit=True),
+                "log_every_n_steps": 1,
+                "min_epochs": 1,
+                "max_steps": -1,
+                "accelerator": "cpu",
+                "devices": 1,
+                # "reload_dataloaders_every_n_epochs": 1,
+                "num_sanity_val_steps": 0,
+                # "callbacks": [Timer()],
+            },
+            # save_config_overwrite=True,
+            seed_everything_default=seed,
+        )
+        # done = False
+        # while not done:
         try:
             cli.trainer.fit(cli.model)  # , cli.datamodule)
-            done = True
+            # cli.trainer.logger.finalize('success')
+            # cli.trainer.logger.experiment.finish()
+            wandb.finish()
+            # done = True
             # n_count+=1
+            # print(n_count)
         except:
-            print("Seed skipped -- running the next one")
-            cli.seed_everything_default += 20
-            # wandb.finish(quiet=True)
-        finally:
-            wandb.finish(quiet=True)
+            print("Seed skipped -- running new one")
+            seeds.append(cli.seed_everything_default + 20)
+            #     cli.trainer.logger.experiment.finish()
+            wandb.finish()
+        #     seed = cli.seed_everything_default+20
+
+        #     cli = start_new_run(seed)
+        # cli.seed_everything_default=36
+        # wandb.finish(quiet=True)
+        # cli.trainer.logger.experiment.finish()
+        # wandb.finish()
+        # seed+=1
+
+        # wandb.finish(quiet=True)
 
     # wandb.join()
 

@@ -69,7 +69,7 @@ class GP(SingleTaskGP):
             train_x,
             train_y,
             GaussianLikelihood(
-                #  noise_constraint=Interval(1e-4, 6e-2)
+                noise_constraint=Interval(MIN_INFERRED_NOISE_LEVEL, noise_val * 1.2)
                 # transform=None,
                 # initial_value=1.0)
             ).double(),
@@ -175,9 +175,9 @@ class HeteroskedasticGP(HeteroskedasticSingleTaskGP):
         super().__init__(
             train_x,
             train_y,
-            # noise_val + 0.0001*torch.rand_like(train_y),
+            noise_val + 0.01 * torch.rand_like(train_y),
             # torch.normal(noise_val, , size=train_y.size()),
-            torch.full_like(train_y, noise_val),
+            # torch.full_like(train_y, noise_val),
             outcome_transform=Standardize(train_y.shape[-1]) if standardize else None,
             input_transform=Normalize(train_x.shape[-1]) if normalize else None,
         )

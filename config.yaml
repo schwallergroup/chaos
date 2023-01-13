@@ -1,7 +1,7 @@
 # pytorch_lightning==1.8.6
-seed_everything: 5
+seed_everything: 19
 trainer:
-  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7fa60a076b90>
+  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f16ae8eeeb0>
   enable_checkpointing: true
   callbacks: null
   default_root_dir: null
@@ -80,14 +80,8 @@ kernel:
   class_path: additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel
   init_args:
     metric: ''
-    ard_num_dims: null
-    batch_shape: torch.Size([])
-    active_dims: null
-    lengthscale_prior: null
-    lengthscale_constraint: null
-    eps: 1.0e-06
 surrogate_model:
-  class_path: additive_bo.surrogate_models.gp.CustomHeteroskedasticGP
+  class_path: additive_bo.surrogate_models.gp.HeteroskedasticGP
   init_args:
     standardize: true
     normalize: false

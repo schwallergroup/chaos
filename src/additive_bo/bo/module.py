@@ -20,7 +20,7 @@ from additive_bo.surrogate_models.gp import (
     FixedGP,
     HeteroskedasticGP,
 )
-from botorch import fit_gpytorch_model
+from botorch import fit_gpytorch_mll, fit_gpytorch_model
 from botorch.acquisition import (
     ExpectedImprovement,
     NoisyExpectedImprovement,
@@ -114,7 +114,7 @@ class BoModule(pl.LightningModule):
                 (self.data.heldout_y.squeeze() - mean_test.squeeze())
                 ** 2  # self.trainer.datamodule.
             ).mean()
-            print(f"Cross-validation error: {pred_error : 4.2}")
+            # print(f"Cross-validation error: {pred_error : 4.2}")
 
             # get lower and upper confidence bounds
             # lower, upper = posterior.mvn.confidence_region()
@@ -139,6 +139,9 @@ class BoModule(pl.LightningModule):
             plt.ylabel("Predicted")
 
             self.logger.log_image(key="pred-vs-actual", images=[wandb.Image(axes)])
+            plt.close("all")
+            plt.clf()
+            plt.cla()
 
     def training_step(self, batch, batch_idx):
         # self.visualize_latent_space('tsne')
@@ -158,7 +161,7 @@ class BoModule(pl.LightningModule):
             strict=False,
         )
 
-        fit_gpytorch_model(self.mll, max_retries=1)
+        fit_gpytorch_mll(self.mll)  # , max_retries=50)
 
         for param_name, param in self.model.named_parameters():
             try:

@@ -5,7 +5,8 @@ Author: Ryan-Rhys Griffiths and Austin Tripp 2022
 
 import torch
 from gpytorch.kernels import Kernel
-from gpytorch.kernels.kernel import default_postprocess_script
+
+# from gpytorch.kernels.kernel import default_postprocess_script
 
 
 def batch_tanimoto_sim(
@@ -30,7 +31,7 @@ class BitDistance(torch.nn.Module):
     Distance module for bit vector test_kernels.
     """
 
-    def __init__(self, postprocess_script=default_postprocess_script):
+    def __init__(self, postprocess_script=None):  # default_postprocess_script):
         super().__init__()
         self._postprocess = postprocess_script
 
@@ -56,7 +57,7 @@ class BitDistance(torch.nn.Module):
         if metric == "tanimoto":
             res = batch_tanimoto_sim(x1, x2)
             res.clamp_min_(0)  # zero out negative values
-            return self._postprocess(res) if postprocess else res
+            return res  # self._postprocess(res) if postprocess else res
         else:
             raise RuntimeError(
                 "Similarity metric not supported. Available options are 'tanimoto'"
@@ -90,7 +91,7 @@ class BitKernel(Kernel):
         x1,
         x2,
         last_dim_is_batch=False,
-        dist_postprocess_func=default_postprocess_script,
+        dist_postprocess_func=None,  # default_postprocess_script,
         postprocess=True,
         **params,
     ):
