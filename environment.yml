@@ -34,4 +34,5 @@ dependencies:
    # additional installs:
    # git+https://github.com/pytorch/botorch.git
    # pip install graphein==1.4.0 --no-deps
+   # pip install networkx
    # pip install selfies

@@ -6,16 +6,6 @@ import string
 import sys
 
 import gpytorch
-import wandb
-from additive_bo.bo.module import BoModule
-from additive_bo.data.module import BOAdditivesDataModule
-from additive_bo.data_init_selection.clustering import BOInitDataSelection
-from additive_bo.surrogate_models.gp import (  # noqa F401
-    GP,
-    FixedGP,
-    HeteroskedasticGP,
-)
-from additive_bo.utils import flatten
 from botorch.models.model import Model as BaseModel
 from pytorch_lightning.callbacks import Timer
 from pytorch_lightning.cli import (
@@ -24,6 +14,13 @@ from pytorch_lightning.cli import (
     SaveConfigCallback,
 )
 from pytorch_lightning.loggers import WandbLogger
+
+import wandb
+from additive_bo.bo.module import BoModule
+from additive_bo.data.module import BOAdditivesDataModule
+from additive_bo.data_init_selection.clustering import BOInitDataSelection
+from additive_bo.surrogate_models.gp import GP, FixedGP, HeteroskedasticGP  # noqa F401
+from additive_bo.utils import flatten
 
 logging.getLogger("PIL").setLevel(logging.WARNING)
 
@@ -136,59 +133,59 @@ def cli_main():
     group = generate_group_name()
     # seed=1
     # n_count=0
-    seeds = list(range(1, 21))
+    # seeds = list(range(1, 21))[::-1]
     # while n_count<20:
     # for seed in range(20):
     # reset_wandb_env()
-    while len(seeds) > 0:
-        seed = seeds.pop()
-        cli = MyLightningCli(
-            model_class=BoModule,
-            datamodule_class=BOAdditivesDataModule,
-            run=False,
-            save_config_callback=WandbSaveConfigCallback,
-            save_config_kwargs={"overwrite": True},
-            trainer_defaults={
-                "logger": WandbLogger(  # save_dir=f'./wandb-save-dir/{group}',
-                    project="additives-debugging"
-                ),  # , reinit=True),
-                "log_every_n_steps": 1,
-                "min_epochs": 1,
-                "max_steps": -1,
-                "accelerator": "cpu",
-                "devices": 1,
-                # "reload_dataloaders_every_n_epochs": 1,
-                "num_sanity_val_steps": 0,
-                # "callbacks": [Timer()],
-            },
-            # save_config_overwrite=True,
-            seed_everything_default=seed,
-        )
-        # done = False
-        # while not done:
-        try:
-            cli.trainer.fit(cli.model)  # , cli.datamodule)
-            # cli.trainer.logger.finalize('success')
-            # cli.trainer.logger.experiment.finish()
-            wandb.finish()
-            # done = True
-            # n_count+=1
-            # print(n_count)
-        except:
-            print("Seed skipped -- running new one")
-            seeds.append(cli.seed_everything_default + 20)
-            #     cli.trainer.logger.experiment.finish()
-            wandb.finish()
-        #     seed = cli.seed_everything_default+20
-
-        #     cli = start_new_run(seed)
-        # cli.seed_everything_default=36
-        # wandb.finish(quiet=True)
+    # while len(seeds) > 0:
+    # seed = seeds.pop()
+    cli = MyLightningCli(
+        model_class=BoModule,
+        datamodule_class=BOAdditivesDataModule,
+        run=False,
+        save_config_callback=WandbSaveConfigCallback,
+        save_config_kwargs={"overwrite": True},
+        trainer_defaults={
+            "logger": WandbLogger(  # save_dir=f'./wandb-save-dir/{group}',
+                project="additives-plate-1"
+            ),  # , reinit=True),
+            "log_every_n_steps": 1,
+            "min_epochs": 1,
+            "max_steps": -1,
+            "accelerator": "cpu",
+            "devices": 1,
+            # "reload_dataloaders_every_n_epochs": 1,
+            "num_sanity_val_steps": 0,
+            # "callbacks": [Timer()],
+        },
+        # save_config_overwrite=True,
+        # seed_everything_default=seed,
+    )
+    # done = False
+    # while not done:
+    try:
+        cli.trainer.fit(cli.model)  # , cli.datamodule)
+        # cli.trainer.logger.finalize('success')
         # cli.trainer.logger.experiment.finish()
         # wandb.finish()
-        # seed+=1
+        # done = True
+        # n_count+=1
+        # print(n_count)
+    except:
+        print("Seed skipped -- running new one")
+        # seeds.append(cli.seed_everything_default + 20)
+        #     cli.trainer.logger.experiment.finish()
+    wandb.finish()
+    #     seed = cli.seed_everything_default+20
 
-        # wandb.finish(quiet=True)
+    #     cli = start_new_run(seed)
+    # cli.seed_everything_default=36
+    # wandb.finish(quiet=True)
+    # cli.trainer.logger.experiment.finish()
+    # wandb.finish()
+    # seed+=1
+
+    # wandb.finish(quiet=True)
 
     # wandb.join()
 

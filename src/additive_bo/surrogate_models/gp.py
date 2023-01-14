@@ -5,9 +5,6 @@ from typing import Optional, Union
 import botorch
 import pytorch_lightning as pl
 import torch
-from additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel import (
-    TanimotoKernel,
-)
 from botorch import fit_gpytorch_model
 from botorch.models.fully_bayesian import SaasFullyBayesianSingleTaskGP
 from botorch.models.gp_regression import (
@@ -17,11 +14,7 @@ from botorch.models.gp_regression import (
     SingleTaskGP,
 )
 from botorch.models.transforms.input import InputTransform, Normalize, Warp
-from botorch.models.transforms.outcome import (
-    Log,
-    OutcomeTransform,
-    Standardize,
-)
+from botorch.models.transforms.outcome import Log, OutcomeTransform, Standardize
 from botorch.models.utils import validate_input_scaling
 
 # from torch import Tensor
@@ -40,6 +33,10 @@ from gpytorch.mlls.noise_model_added_loss_term import NoiseModelAddedLossTerm
 from gpytorch.priors import LogNormalPrior
 from gpytorch.priors.smoothed_box_prior import SmoothedBoxPrior
 from torch import Tensor
+
+from additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel import (
+    TanimotoKernel,
+)
 
 
 class GP(SingleTaskGP):
@@ -69,7 +66,7 @@ class GP(SingleTaskGP):
             train_x,
             train_y,
             GaussianLikelihood(
-                noise_constraint=Interval(MIN_INFERRED_NOISE_LEVEL, noise_val * 1.2)
+                noise_constraint=Interval(MIN_INFERRED_NOISE_LEVEL, noise_val * 2)
                 # transform=None,
                 # initial_value=1.0)
             ).double(),
@@ -175,9 +172,9 @@ class HeteroskedasticGP(HeteroskedasticSingleTaskGP):
         super().__init__(
             train_x,
             train_y,
-            noise_val + 0.01 * torch.rand_like(train_y),
+            # noise_val + 0.01 * torch.rand_like(train_y),
             # torch.normal(noise_val, , size=train_y.size()),
-            # torch.full_like(train_y, noise_val),
+            torch.full_like(train_y, noise_val),
             outcome_transform=Standardize(train_y.shape[-1]) if standardize else None,
             input_transform=Normalize(train_x.shape[-1]) if normalize else None,
         )
