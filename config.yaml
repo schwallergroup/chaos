@@ -1,7 +1,7 @@
 # pytorch_lightning==1.8.6
-seed_everything: 19
+seed_everything: 3051845845
 trainer:
-  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f16ae8eeeb0>
+  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7fb40ea4bf10>
   enable_checkpointing: true
   callbacks: null
   default_root_dir: null
@@ -72,7 +72,7 @@ data:
 n_iters: 100
 n_trials: 20
 data_selection:
-  init_method: k-medoids++
+  init_method: random
   metric: jaccard
   n_clusters: 10
   seed: null
@@ -81,7 +81,7 @@ kernel:
   init_args:
     metric: ''
 surrogate_model:
-  class_path: additive_bo.surrogate_models.gp.HeteroskedasticGP
+  class_path: additive_bo.surrogate_models.gp.CustomHeteroskedasticGP
   init_args:
     standardize: true
     normalize: false

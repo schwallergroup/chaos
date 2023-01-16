@@ -1,6 +1,7 @@
 import random
 
 import numpy as np
+import torch
 from rdkit.ML.Cluster.Butina import ClusterData
 from sklearn.decomposition import PCA
 from sklearn.metrics import pairwise_distances
@@ -70,12 +71,15 @@ class BOInitDataSelection:
             # find indices of x_init_set in x
             kmedoids = KMedoids(
                 n_clusters=self.n_clusters,
-                init="k-medoids++",
+                init="random",
                 random_state=self.seed,
                 metric=self.metric,
                 max_iter=5000,
             ).fit(x_pca)
             init_indices_from_clusters = kmedoids.medoid_indices_.tolist()
+
+        elif self.init_method == "true_random":
+            init_indices_from_clusters = torch.randperm(len(x_init))[: self.n_clusters]
 
         else:
             # find indices of x_init_set in x
