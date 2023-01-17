@@ -31,6 +31,12 @@ def get_mol_or_rxn_smile(representation):
     return "Additive_Smiles"
 
 
+def get_distance_metric(representation):
+    if representation in ["drfp", "fingerprints", "fragprints"]:
+        return "jaccard"
+    return "euclidean"
+
+
 class MyLightningCli(LightningCLI):
     def add_arguments_to_parser(self, parser: LightningArgumentParser) -> None:
         parser.add_argument("--n_iters", type=int, default=100)
@@ -40,7 +46,12 @@ class MyLightningCli(LightningCLI):
         parser.add_subclass_arguments(BaseModel, "surrogate_model")
         parser.add_subclass_arguments(gpytorch.kernels.Kernel, "kernel")
 
-        # parser.link_arguments('data.representation', 'data.featurize_column', apply_on='instantiate', compute_fn=get_mol_or_rxn_smile)
+        parser.link_arguments(
+            "data.representation",
+            "data.featurize_column",
+            apply_on="parse",
+            compute_fn=get_mol_or_rxn_smile,
+        )
         parser.link_arguments(
             "data_selection", "data.init_selection_method", apply_on="instantiate"
         )
