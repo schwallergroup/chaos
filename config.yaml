@@ -1,7 +1,7 @@
 # pytorch_lightning==1.8.6
-seed_everything: 3051845845
+seed_everything: 5
 trainer:
-  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7fb40ea4bf10>
+  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f24319f32b0>
   enable_checkpointing: true
   callbacks: null
   default_root_dir: null
@@ -59,20 +59,24 @@ model:
   - 3
   - 5
   - 10
+  batch_size: 1
 data:
   data_path: data/additives_reactions.csv
-  reaction_plate: 1
+  reaction_plate: 4
   base_additive: N#N
   representation: drfp
-  feature_dimension: 2048
-  featurize_column: reaction_smiles
+  feature_dimension: 128
   exclude_n_largest: 0
   scale_by_baseline: true
   noise_calc: var
+  dim_reduction: null
+  reduction_size: 64
+  bond_radius: 5
+  transform_output: boxcox
 n_iters: 100
 n_trials: 20
 data_selection:
-  init_method: random
+  init_method: believer
   metric: jaccard
   n_clusters: 10
   seed: null
@@ -81,9 +85,9 @@ kernel:
   init_args:
     metric: ''
 surrogate_model:
-  class_path: additive_bo.surrogate_models.gp.CustomHeteroskedasticGP
+  class_path: additive_bo.surrogate_models.gp.MostLikelyHeteroskedasticGP
   init_args:
-    standardize: true
+    standardize: false
     normalize: false
     zero_mean: false
-    input_warping: false
+    var_estimate: paper

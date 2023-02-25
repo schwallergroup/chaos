@@ -9,6 +9,17 @@ import plotly
 import plotly.express as px
 import pytorch_lightning as pl
 import torch
+from botorch import fit_gpytorch_mll, fit_gpytorch_model
+from botorch.acquisition import (
+    ExpectedImprovement,
+    NoisyExpectedImprovement,
+    UpperConfidenceBound,
+)
+from gpytorch import ExactMarginalLogLikelihood
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
+from sklearn.manifold import TSNE
+from torchmetrics import MeanAbsoluteError, MeanSquaredError, R2Score
+
 import wandb
 from additive_bo.data.utils import torch_delete_rows
 from additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel import (
@@ -19,30 +30,25 @@ from additive_bo.surrogate_models.gp import (
     CustomHeteroskedasticGP,
     FixedGP,
     HeteroskedasticGP,
+    MostLikelyHeteroskedasticGP,
 )
-from botorch import fit_gpytorch_mll, fit_gpytorch_model
-from botorch.acquisition import (
-    ExpectedImprovement,
-    NoisyExpectedImprovement,
-    UpperConfidenceBound,
-)
-from gpytorch import ExactMarginalLogLikelihood
-from pytorch_lightning.utilities.types import (
-    EVAL_DATALOADERS,
-    TRAIN_DATALOADERS,
-)
-from sklearn.manifold import TSNE
-from torchmetrics import MeanAbsoluteError, MeanSquaredError, R2Score
 
 
 class BoModule(pl.LightningModule):
     def __init__(
         self,
         data: pl.LightningDataModule,
-        model: Union[GP, FixedGP, HeteroskedasticGP, CustomHeteroskedasticGP],
+        model: Union[
+            GP,
+            FixedGP,
+            HeteroskedasticGP,
+            CustomHeteroskedasticGP,
+            MostLikelyHeteroskedasticGP,
+        ],
         acquisition_class: str = "ucb",
         beta: float = 0.1,
         top_n: List[int] = None,
+        batch_size: int = 1,
     ):
         super().__init__()
         print(model.noise_val, "NOISE VALUE")
@@ -59,6 +65,7 @@ class BoModule(pl.LightningModule):
 
         self.acquisition_class = acquisition_class
         self.beta = beta
+        self.batch_size = batch_size
 
         self.save_hyperparameters(
             ignore=["kernel", "model", "mll", "data", "acquisition_class", "beta"]
@@ -100,10 +107,10 @@ class BoModule(pl.LightningModule):
     def plot_predicted_vs_true_observation_noise(self):
         # fig, ax = plt.subplots(1, 1, figsize=(6, 4))
         with torch.no_grad():
-            posterior_train = self.model.posterior(
+            posterior_train = self.mll.model.posterior(
                 self.data.train_x, observation_noise=True  # self.trainer.datamodule.
             )
-            posterior_test = self.model.posterior(
+            posterior_test = self.mll.model.posterior(
                 self.data.heldout_x, observation_noise=True  # self.trainer.datamodule.
             )
 
@@ -147,7 +154,7 @@ class BoModule(pl.LightningModule):
         # self.visualize_latent_space('tsne')
         # train_x, train_y = batch
         # train_x, train_y = train_x.squeeze(0), train_y.squeeze(0)
-
+        # with torch.no_grad():
         train_x, train_y = (
             self.data.train_x,  # self.trainer.datamodule
             self.data.train_y,  # self.trainer.datamodule
@@ -156,12 +163,16 @@ class BoModule(pl.LightningModule):
         prev_state = self.model.state_dict()
         self.model = self.model.reinit(train_x=train_x, train_y=train_y)
         self.initialize_mll(likelihood=self.model.likelihood, model=self.model)
+
+        self.model.train()  # should ?
         self.model.load_state_dict(
             {k: v for k, v in prev_state.items() if "outcome_transform" not in k},
             strict=False,
         )
 
-        fit_gpytorch_mll(self.mll)  # , max_retries=50)
+        # print('bo module, max min data', torch.max(train_x), torch.min(train_x))
+
+        fit_gpytorch_mll(self.mll, max_retries=50)
 
         for param_name, param in self.model.named_parameters():
             try:
@@ -195,7 +206,7 @@ class BoModule(pl.LightningModule):
         #     self.trainer.datamodule.heldout_y,
         # )
 
-        self.plot_predicted_vs_true_observation_noise()
+        # self.plot_predicted_vs_true_observation_noise()
 
         # self.optimize_acqf_and_get_observation(heldout_x, heldout_y)
 
@@ -209,9 +220,15 @@ class BoModule(pl.LightningModule):
             self.data.heldout_x,  # self.trainer.datamodule.
             self.data.heldout_y,  # self.trainer.datamodule.
         )
-        self.optimize_acqf_and_get_observation(heldout_x, heldout_y)
+        with torch.no_grad():
+            self.optimize_acqf_and_get_observation(heldout_x, heldout_y)
 
-    # def validation_step(self, batch, *args, **kwargs):
+    def validation_step(self, batch, *args, **kwargs):
+        self.model.eval()
+        self.mll.eval()
+        with torch.no_grad():
+            self.plot_predicted_vs_true_observation_noise()
+
     #     heldout_x, heldout_y = batch
     #     heldout_x, heldout_y = heldout_x.squeeze(0), heldout_y.squeeze(0)
 
@@ -303,21 +320,29 @@ class BoModule(pl.LightningModule):
                 beta=self.beta,
             )
 
-    def optimize_acquisition(self, heldout_x, heldout_y):
-        acq_vals = []
-        # Loop over the discrete set of points to evaluate the acquisition function at.
-        for i in range(len(heldout_y)):
-            acq_vals.append(
-                self.acquisition(heldout_x[i].unsqueeze(-2))
-            )  # use unsqueeze to append batch dimension
-
-        # observe new values
-        acq_vals = torch.tensor(acq_vals)
-        best_idx = torch.argmax(acq_vals)
+    def optimize_acquisition(self, heldout_x, batch_size=4):
+        acq_vals = self.acquisition(heldout_x.unsqueeze(-2))
+        best_idxs = torch.argsort(acq_vals, descending=True)[:batch_size]
         self.log("sum_acq_values", acq_vals.sum())
-        self.log("suggestion_idx", best_idx)
+        self.log("suggestion_idx", best_idxs[0])
 
-        return best_idx
+        return best_idxs
+
+    # def optimize_acquisition(self, heldout_x, heldout_y):
+    #     acq_vals = []
+    #     # Loop over the discrete set of points to evaluate the acquisition function at.
+    #     for i in range(len(heldout_y)):
+    #         acq_vals.append(
+    #             self.acquisition(heldout_x[i].unsqueeze(-2))
+    #         )  # use unsqueeze to append batch dimension
+
+    #     # observe new values
+    #     acq_vals = torch.tensor(acq_vals)
+    #     best_idx = torch.argmax(acq_vals)
+    #     self.log("sum_acq_values", acq_vals.sum())
+    #     self.log("suggestion_idx", best_idx)
+
+    #     return best_idx
 
     # todo
     # def update_train_heldout_data()
@@ -325,25 +350,31 @@ class BoModule(pl.LightningModule):
     def optimize_acqf_and_get_observation(self, heldout_x, heldout_y):
 
         if self.acquisition_class == "random":
-            best_idx = torch.randperm(len(heldout_y))[0]
+            best_idxs = torch.randperm(len(heldout_y))[: self.batch_size]
         else:
             self.construct_acquisition()
-            best_idx = self.optimize_acquisition(heldout_x, heldout_y)
+            best_idxs = self.optimize_acquisition(heldout_x, batch_size=self.batch_size)
 
-        new_x = heldout_x[best_idx].unsqueeze(-2)  # add batch dimension
-        new_y = heldout_y[best_idx].unsqueeze(-1)  # add output dimension
+        new_x = heldout_x[best_idxs]  # .unsqueeze(-2)  # add batch dimension
+        new_y = heldout_y[best_idxs]  # .unsqueeze(-1)  # add output dimension
 
-        self.data.train_indexes.append(best_idx)  # self.trainer.datamodule
+        # self.data.train_indexes.append(best_idx)  # self.trainer.datamodule
+        self.data.train_indexes.extend(best_idxs)
 
+        # for i, n in enumerate(self.top_n):
+        #     if new_y >= self.data.get_nth_largest_yield(n):  # self.trainer.datamodule
+        #         self.top_count[i] += 1
         for i, n in enumerate(self.top_n):
-            if new_y >= self.data.get_nth_largest_yield(n):  # self.trainer.datamodule
-                self.top_count[i] += 1
-        self.log("train/suggestion", new_y)
+            for yi in new_y:
+                if yi >= self.data.get_nth_largest_yield(n):  # self.trainer.datamodule
+                    self.top_count[i] += 1
+
+        self.log("train/suggestion", torch.max(new_y))
 
         # update heldout set points
         # delete the selected input and value from the heldout set.
-        self.data.heldout_x = torch_delete_rows(self.data.heldout_x, [best_idx])
-        self.data.heldout_y = torch_delete_rows(self.data.heldout_y, [best_idx])
+        self.data.heldout_x = torch_delete_rows(self.data.heldout_x, best_idxs)
+        self.data.heldout_y = torch_delete_rows(self.data.heldout_y, best_idxs)
 
         # update training points
         # self.trainer.datamodule.train_x = torch.cat([self.trainer.datamodule.train_x, new_x.to('cpu')])

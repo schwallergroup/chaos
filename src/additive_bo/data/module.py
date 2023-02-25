@@ -7,19 +7,20 @@ import pandas as pd
 import plotly.express as px
 import pytorch_lightning as pl
 import torch
-from additive_bo.data.dataset import DynamicSet, SingleSampleDataset
-from additive_bo.data.utils import torch_delete_rows
-from additive_bo.data_init_selection.clustering import BOInitDataSelection
-from additive_bo.gprotorch.dataloader import DataLoaderMP, ReactionLoader
+from botorch.models.transforms.input import Normalize
 from matplotlib import pyplot as plt
-from pytorch_lightning.utilities.types import (
-    EVAL_DATALOADERS,
-    TRAIN_DATALOADERS,
-)
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
+from scipy import stats
 from scipy.stats import sem
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from torch.utils.data import DataLoader
+
+from additive_bo.data.dataset import DynamicSet, SingleSampleDataset
+from additive_bo.data.reduction.vae import VAE, train_vae
+from additive_bo.data.utils import torch_delete_rows
+from additive_bo.data_init_selection.clustering import BOInitDataSelection
+from additive_bo.gprotorch.dataloader import DataLoaderMP, ReactionLoader
 
 
 class BOAdditivesDataModule(pl.LightningDataModule):
@@ -37,6 +38,10 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         scale_by_baseline: bool = False,
         init_selection_method: BOInitDataSelection = None,
         noise_calc: str = "se",
+        dim_reduction: str = None,
+        reduction_size: int = 64,
+        bond_radius: int = 3,
+        transform_output: str = None,
     ):
         super().__init__()
         self.noise_calc = noise_calc
@@ -55,12 +60,16 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         self.reaction_plate = reaction_plate
         self.base_additive = base_additive
         self.representation = representation
+        self.bond_radius = bond_radius
         self.feature_dimension = feature_dimension
         self.init_sample_size = init_sample_size
         self.featurize_column = featurize_column
         self.exclude_n_largest = exclude_n_largest
         self.scale_by_baseline = scale_by_baseline
         self.init_selection_method = init_selection_method
+        self.dim_reduction = dim_reduction
+        self.reduction_size = reduction_size
+        self.transform_output = transform_output
 
         self.save_hyperparameters()
         self.setup()
@@ -73,8 +82,10 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         # todo do I need to scale by base reaction
         if self.scale_by_baseline:
             self.additives_reactions = (
-                reaction_data[[self.featurize_column, "UV210_Prod AreaAbs"]]
-                .groupby(self.featurize_column)
+                reaction_data[
+                    [self.featurize_column, "Additive_Smiles", "UV210_Prod AreaAbs"]
+                ]
+                .groupby([self.featurize_column, "Additive_Smiles"])
                 .apply(
                     lambda x: x[["UV210_Prod AreaAbs"]].mean()
                     / self.base_reactions["UV210_Prod AreaAbs"].mean()
@@ -94,6 +105,8 @@ class BOAdditivesDataModule(pl.LightningDataModule):
                 .reset_index()
             )
 
+            self.base_reactions = self.base_reactions["UV210_Prod AreaAbs"]
+
     def calculate_noise_error(self):
         if self.noise_calc == "se":
             self.noise = sem(self.base_reactions.values)
@@ -101,6 +114,15 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             self.noise = self.base_reactions.var()
         elif self.noise_calc == "std":
             self.noise = self.base_reactions.std()
+
+    def remove_nan_rows(self):
+        mask = torch.isnan(self.x).any(dim=1)
+        indices_to_delete = mask.nonzero().flatten().tolist()
+        self.x = torch_delete_rows(self.x, indices_to_delete)
+        self.y = torch_delete_rows(self.y, indices_to_delete)
+        self.additives_reactions = self.additives_reactions.drop(
+            index=indices_to_delete
+        ).reset_index(drop=True)
 
     def remove_duplicates(self):
         __, inv, counts = torch.unique(
@@ -130,18 +152,30 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             loader = DataLoaderMP()
             loader.features = self.additives_reactions[self.featurize_column].to_list()
             loader.featurize(
-                self.representation, bond_radius=3, nBits=self.feature_dimension
+                self.representation,
+                bond_radius=self.bond_radius,
+                nBits=self.feature_dimension,
             )
         elif self.featurize_column == "reaction_smiles":
             loader = ReactionLoader()
             loader.features = self.additives_reactions[self.featurize_column]
             loader.featurize(self.representation, nBits=self.feature_dimension)
-        loader.labels = (
-            self.additives_reactions["UV210_Prod AreaAbs"].to_numpy().reshape(-1, 1)
-        )
+        loader.labels = self.additives_reactions["UV210_Prod AreaAbs"].to_numpy()
 
         x = loader.features
         y = loader.labels
+
+        if self.transform_output == "boxcox":
+            y, _ = stats.boxcox(y + 1e-6)
+        elif self.transform_output == "yeo-johnson":
+            y, _ = stats.yeojohnson(y + 1e-6)
+        elif self.transform_output == "log":
+            y = np.log(y + 1e-6)
+
+        # y = y + 1e-1
+        self.additives_reactions["UV210_Prod AreaAbs"] = y
+
+        y = y.reshape(-1, 1)
 
         self.x = torch.from_numpy(x).to(torch.float64)  # .to('cuda')
         self.y = torch.from_numpy(y).to(torch.float64)  # .to('cuda')
@@ -151,34 +185,84 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             self.additives_reactions[self.featurize_column].str.contains(
                 self.base_additive
             )
-        ].index[0]
+        ].index.tolist()
 
-    def setup(self, stage: Optional[str] = None) -> None:
-        self.setup_data_by_reaction_plate()
-        self.calculate_noise_error()
-        self.featurize()
-        self.remove_duplicates()
+    def reduce_dimensionality(self, data, reduction_technique=None):
+        if reduction_technique == "VAE":
 
-        baseline_reaction_index = self.get_baseline_reaction()
-        high_yield_rxn_indexes = self.get_n_largest_yield_reactions(
-            n=self.exclude_n_largest
-        )
-        init_indexes = self.init_selection_method.fit(
-            self.x, exclude=[baseline_reaction_index] + high_yield_rxn_indexes
-        )
-        # exclude=high_yield_rxn_indexes)
+            vae = VAE(self.feature_dimension, self.reduction_size, 256)
+            # vae = VAE(self.feature_dimension, self.reduction_size)
+            # vae.load_state_dict(torch.load(f"notebooks/vae-{self.reduction_size}.pth"))
+            vae.load_state_dict(
+                torch.load("vae-ls-16-hdim-256-bs-32-lr-0.001-clip-1.pth")
+            )
+            vae.double()
+            # vae = train_vae(data, 256, 64, 1000)
+            with torch.no_grad():
+                h = vae.encoder(data)
+                mu, logvar = torch.chunk(h, 2, dim=1)
+                reduced_data = vae.reparameterize(mu, logvar).detach()
 
-        print(f"Selected reactions: {init_indexes}")
-        # train_indexes = [baseline_reaction_index] + init_indexes
+            # reduced_data, _ = vae.encode(data)
+            # reduced_data = reduced_data.detach()
+        elif reduction_technique == "PCA":
+            pca = PCA()
+            reduced_data = pca.fit_transform(data)
+        else:
+            reduced_data = data
+        return reduced_data
+
+    def train_test_split(self, init_indexes, baseline_reaction_index):
         self.train_indexes = init_indexes
         self.train_x = self.x[init_indexes]  # init_indexes
         self.train_y = self.y[init_indexes]
 
         self.heldout_x = torch_delete_rows(
-            self.x, [baseline_reaction_index] + init_indexes
+            self.x, baseline_reaction_index + init_indexes
         )  # x[heldout_indices]
         self.heldout_y = torch_delete_rows(
-            self.y, [baseline_reaction_index] + init_indexes
+            self.y, baseline_reaction_index + init_indexes
+        )  # y[heldout_indices]
+
+        # return self.train_x, self.train_y, self.heldout_x, self.heldout_y
+
+    def setup(self, stage: Optional[str] = None) -> None:
+        self.setup_data_by_reaction_plate()
+        self.calculate_noise_error()
+        self.featurize()
+        self.remove_duplicates()  # will edit additives dataframe
+        self.remove_nan_rows()  # will edit additives dataframe
+        self.x = self.reduce_dimensionality(
+            self.x, reduction_technique=self.dim_reduction
+        )
+        # data_for_clustering = self.reduce_dimensionality(self.x, reduction_technique=self.dim_reduction)
+
+        baseline_reaction_index = self.get_baseline_reaction()
+        print(baseline_reaction_index, "baseline reaction index")
+        high_yield_rxn_indexes = self.get_n_largest_yield_reactions(
+            n=self.exclude_n_largest
+        )
+        init_indexes, clusters = self.init_selection_method.fit(
+            self.x, exclude=baseline_reaction_index + high_yield_rxn_indexes
+        )
+        # init_indexes, clusters = self.init_selection_method.fit(
+        #     data_for_clustering, exclude=baseline_reaction_index + high_yield_rxn_indexes
+        # )
+
+        # exclude=high_yield_rxn_indexes)
+
+        print(f"Selected reactions: {init_indexes}")
+        # train_indexes = [baseline_reaction_index] + init_indexes
+        self.clusters = clusters
+        self.train_indexes = init_indexes
+        self.train_x = self.x[init_indexes]  # init_indexes
+        self.train_y = self.y[init_indexes]
+
+        self.heldout_x = torch_delete_rows(
+            self.x, baseline_reaction_index + init_indexes
+        )  # x[heldout_indices]
+        self.heldout_y = torch_delete_rows(
+            self.y, baseline_reaction_index + init_indexes
         )  # y[heldout_indices]
 
         # print(self.trainer, "SELF TRAINER JEBEM TI MATER")

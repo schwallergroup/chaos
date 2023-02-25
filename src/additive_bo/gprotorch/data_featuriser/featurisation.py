@@ -68,7 +68,7 @@ def rxnfp2(reaction_smiles):
     return np.array(rxnfps, dtype=np.float64)
 
 
-def drfp(reaction_smiles, nBits=2048):
+def drfp(reaction_smiles, bond_radius=3, nBits=2048):
     """
     https://github.com/reymond-group/drfp
 
@@ -78,8 +78,14 @@ def drfp(reaction_smiles, nBits=2048):
     :return: array of shape [len(reaction_smiles), nBits] with drfp featurised reactions
 
     """
-    fps = DrfpEncoder.encode(reaction_smiles, n_folded_length=nBits)
+    fps = DrfpEncoder.encode(reaction_smiles, n_folded_length=nBits, radius=bond_radius)
     return np.array(fps, dtype=np.float64)
+
+
+def drxnfp(reaction_smiles, bond_radius=3, nBits=2048):
+    drfps = drfp(reaction_smiles, nBits, radius=bond_radius)
+    rxnfps = rxnfp(reaction_smiles)
+    return np.concatenate([drfps, rxnfps], axis=1)
 
 
 # Molecules

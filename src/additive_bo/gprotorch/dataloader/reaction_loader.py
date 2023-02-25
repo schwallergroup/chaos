@@ -1,7 +1,9 @@
 import pandas as pd
+
 from additive_bo.gprotorch.data_featuriser import (
     bag_of_characters,
     drfp,
+    drxnfp,
     one_hot,
     rxnfp,
     rxnfp2,
@@ -35,7 +37,7 @@ class ReactionLoader(DataLoader):
     def validate(self, drop=True):
         invalid_idx = []
 
-    def featurize(self, representation, nBits=2048):
+    def featurize(self, representation, bond_radius=3, nBits=2048):
         """Transforms reactions into the specified representation.
 
         :param representation: the desired reaction representation, one of [ohe, rxnfp, drfp, bag_of_smiles]
@@ -47,7 +49,9 @@ class ReactionLoader(DataLoader):
         valid_representations = [
             "ohe",
             "rxnfp",
-            "rxnfp2" "drfp",
+            "rxnfp2",
+            "drfp",
+            "drxnfp",
             "bag_of_smiles",
         ]
 
@@ -61,7 +65,14 @@ class ReactionLoader(DataLoader):
             self.features = rxnfp2(self.features.to_list())
 
         elif representation == "drfp":
-            self.features = drfp(self.features.to_list(), nBits=nBits)
+            self.features = drfp(
+                self.features.to_list(), nBits=nBits, bond_radius=bond_radius
+            )
+
+        elif representation == "drxnfp":
+            self.features = drxnfp(
+                self.features.to_list(), bond_radius=bond_radius, nBits=nBits
+            )
 
         elif representation == "bag_of_smiles":
             self.features = bag_of_characters(self.features.to_list())

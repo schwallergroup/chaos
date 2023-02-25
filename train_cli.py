@@ -23,6 +23,7 @@ from additive_bo.surrogate_models.gp import GP, FixedGP, HeteroskedasticGP  # no
 from additive_bo.utils import flatten
 
 logging.getLogger("PIL").setLevel(logging.WARNING)
+logging.getLogger("PIL.PngImagePlugin").setLevel(logging.CRITICAL + 1)
 
 
 def get_mol_or_rxn_smile(representation):
@@ -31,8 +32,12 @@ def get_mol_or_rxn_smile(representation):
     return "Additive_Smiles"
 
 
-def get_distance_metric(representation):
-    if representation in ["drfp", "fingerprints", "fragprints"]:
+def get_distance_metric(kernel):
+    # if representation in ["drfp", "fingerprints", "fragprints"]:
+    if (
+        kernel
+        == "additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel"
+    ):
         return "jaccard"
     return "euclidean"
 
@@ -142,14 +147,6 @@ def start_new_run(seed):
 def cli_main():
 
     group = generate_group_name()
-    # seed=1
-    # n_count=0
-    # seeds = list(range(1, 21))[::-1]
-    # while n_count<20:
-    # for seed in range(20):
-    # reset_wandb_env()
-    # while len(seeds) > 0:
-    # seed = seeds.pop()
     cli = MyLightningCli(
         model_class=BoModule,
         datamodule_class=BOAdditivesDataModule,
@@ -158,59 +155,20 @@ def cli_main():
         save_config_kwargs={"overwrite": True},
         trainer_defaults={
             "logger": WandbLogger(  # save_dir=f'./wandb-save-dir/{group}',
-                project="additives-plate-1"
-            ),  # , reinit=True),
+                project="additives"
+            ),
             "log_every_n_steps": 1,
             "min_epochs": 1,
             "max_steps": -1,
             "accelerator": "cpu",
             "devices": 1,
-            # "reload_dataloaders_every_n_epochs": 1,
             "num_sanity_val_steps": 0,
-            # "callbacks": [Timer()],
         },
-        # save_config_overwrite=True,
-        # seed_everything_default=seed,
     )
-    # done = False
-    # while not done:
-    try:
-        cli.trainer.fit(cli.model)  # , cli.datamodule)
-        # cli.trainer.logger.finalize('success')
-        # cli.trainer.logger.experiment.finish()
-        # wandb.finish()
-        # done = True
-        # n_count+=1
-        # print(n_count)
-    except:
-        print("Seed skipped -- running new one")
-        # seeds.append(cli.seed_everything_default + 20)
-        #     cli.trainer.logger.experiment.finish()
+
+    cli.trainer.fit(cli.model)
     wandb.finish()
-    #     seed = cli.seed_everything_default+20
-
-    #     cli = start_new_run(seed)
-    # cli.seed_everything_default=36
-    # wandb.finish(quiet=True)
-    # cli.trainer.logger.experiment.finish()
-    # wandb.finish()
-    # seed+=1
-
-    # wandb.finish(quiet=True)
-
-    # wandb.join()
 
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser()
-
-    # parser.add_argument(
-    #     "-nt",
-    #     "--n_trials",
-    #     type=int,
-    #     default=20,
-    #     help="int specifying number of random trials to use",
-    # )
-    # args = parser.parse_args()
-
     cli_main()
