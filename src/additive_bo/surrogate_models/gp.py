@@ -372,10 +372,11 @@ class CustomHeteroskedasticGP(SingleTaskGP):
 
         noise_model = SingleTaskGP(
             train_X=train_x,
-            train_Y=torch.log(train_yvar),
+            train_Y=train_yvar,
             # likelihood=GaussianLikelihood(),
-            # covar_module=ScaleKernel(base_kernel=kernel),
-            input_transform=input_transform,  # NOTE: potential bug here
+            covar_module=ScaleKernel(base_kernel=kernel),
+            input_transform=input_transform,  # NOTE: potential 565bug here
+            outcome_transform=Standardize(1),
         )
 
         mll = ExactMarginalLogLikelihood(noise_model.likelihood, noise_model)
@@ -513,7 +514,7 @@ from botorch.models.transforms.outcome import ChainedOutcomeTransform, Log
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 
 
-class MostLikelyHeteroskedasticGP(CustomHeteroskedasticGP):
+class MostLikelyHeteroskedasticGP(FixedGP):
     def __init__(
         self,
         train_x: Tensor,

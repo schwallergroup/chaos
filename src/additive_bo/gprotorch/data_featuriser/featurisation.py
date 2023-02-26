@@ -88,6 +88,12 @@ def drxnfp(reaction_smiles, bond_radius=3, nBits=2048):
     return np.concatenate([drfps, rxnfps], axis=1)
 
 
+def drfpfingerprints(reaction_smiles, smiles, bond_radius=3, nBits=2048):
+    drfps = drfp(reaction_smiles, nBits, radius=bond_radius)
+    fingerprints = fingerprints(smiles, bond_radius=bond_radius, nBits=nBits)
+    return np.concatenate([drfps, fingerprints], axis=1)
+
+
 # Molecules
 def fingerprints(smiles, bond_radius=3, nBits=2048):
     rdkit_mols = [MolFromSmiles(smiles) for smiles in smiles]

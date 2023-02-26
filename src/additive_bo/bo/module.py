@@ -47,7 +47,7 @@ class BoModule(pl.LightningModule):
         ],
         acquisition_class: str = "ucb",
         beta: float = 0.1,
-        top_n: List[int] = None,
+        top_n: List[int] = [1, 3, 5, 10],
         batch_size: int = 1,
     ):
         super().__init__()

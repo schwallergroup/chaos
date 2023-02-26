@@ -3,6 +3,7 @@ from .featurisation import (
     cddd,
     chemberta_features,
     drfp,
+    drfpfingerprints,
     drxnfp,
     fingerprints,
     fragments,
@@ -27,4 +28,5 @@ __all__ = [
     "random_features",
     "graphs",
     "mqn_features",
+    "drfpfingerprints",
 ]

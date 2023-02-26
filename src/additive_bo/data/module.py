@@ -83,9 +83,9 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         if self.scale_by_baseline:
             self.additives_reactions = (
                 reaction_data[
-                    [self.featurize_column, "Additive_Smiles", "UV210_Prod AreaAbs"]
+                    ["reaction_smiles", "Additive_Smiles", "UV210_Prod AreaAbs"]
                 ]
-                .groupby([self.featurize_column, "Additive_Smiles"])
+                .groupby(["reaction_smiles", "Additive_Smiles"])
                 .apply(
                     lambda x: x[["UV210_Prod AreaAbs"]].mean()
                     / self.base_reactions["UV210_Prod AreaAbs"].mean()
@@ -99,8 +99,10 @@ class BOAdditivesDataModule(pl.LightningDataModule):
 
         else:
             self.additives_reactions = (
-                reaction_data[[self.featurize_column, "UV210_Prod AreaAbs"]]
-                .groupby(self.featurize_column)
+                reaction_data[
+                    ["reaction_smiles", "Additive_Smiles", "UV210_Prod AreaAbs"]
+                ]
+                .groupby(["reaction_smiles", "Additive_Smiles"])
                 .apply(lambda x: x[["UV210_Prod AreaAbs"]].mean())
                 .reset_index()
             )
@@ -148,22 +150,53 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         Featurize reaction or additive smiles using defined representation.
 
         """
-        if self.featurize_column == "Additive_Smiles":
+        if self.representation == "drfpfingerprints":
+            additive_loader = DataLoaderMP()
+            additive_loader.features = self.additives_reactions[
+                "Additive_Smiles"
+            ].to_list()
+            additive_loader.featurize(
+                "fingerprints",
+                bond_radius=self.bond_radius,
+                nBits=self.feature_dimension,
+            )
+
+            reaction_loader = ReactionLoader()
+            reaction_loader.features = self.additives_reactions["reaction_smiles"]
+            reaction_loader.featurize("drfp", nBits=self.feature_dimension)
+            reaction_loader.labels = self.additives_reactions[
+                "UV210_Prod AreaAbs"
+            ].to_numpy()
+
+            x = np.concatenate(
+                [reaction_loader.features, additive_loader.features], axis=1
+            )
+            y = reaction_loader.labels
+
+        elif self.featurize_column == "Additive_Smiles":
             loader = DataLoaderMP()
-            loader.features = self.additives_reactions[self.featurize_column].to_list()
+            loader.features = self.additives_reactions["Additive_Smiles"].to_list()
             loader.featurize(
                 self.representation,
                 bond_radius=self.bond_radius,
                 nBits=self.feature_dimension,
             )
+
+            x = loader.features
+            y = loader.labels
+
         elif self.featurize_column == "reaction_smiles":
             loader = ReactionLoader()
-            loader.features = self.additives_reactions[self.featurize_column]
-            loader.featurize(self.representation, nBits=self.feature_dimension)
-        loader.labels = self.additives_reactions["UV210_Prod AreaAbs"].to_numpy()
+            loader.features = self.additives_reactions["reaction_smiles"]
+            loader.featurize(
+                self.representation,
+                nBits=self.feature_dimension,
+                bond_radius=self.bond_radius,
+            )
+            loader.labels = self.additives_reactions["UV210_Prod AreaAbs"].to_numpy()
 
-        x = loader.features
-        y = loader.labels
+            x = loader.features
+            y = loader.labels
 
         if self.transform_output == "boxcox":
             y, _ = stats.boxcox(y + 1e-6)
@@ -400,6 +433,115 @@ class BOAdditivesDataModule(pl.LightningDataModule):
 
     def get_nth_largest_yield(self, n=10):
         return self.additives_reactions["UV210_Prod AreaAbs"].nlargest(n=n).iloc[-1]
+
+    def train_dataloader(self) -> TRAIN_DATALOADERS:
+        train_dataset = SingleSampleDataset(self.train_x, self.train_y)
+        return DataLoader(train_dataset, num_workers=4)
+
+    def val_dataloader(self) -> EVAL_DATALOADERS:
+        valid_dataset = SingleSampleDataset(self.heldout_x, self.heldout_y)
+        return DataLoader(valid_dataset, num_workers=4)
+
+    def transfer_batch_to_device(self, batch, device, dataloader_idx):
+        batch = [item.to(device) for item in batch]
+        return batch
+
+
+class HTEDataModule(pl.LightningDataModule):
+    def __init__(
+        self,
+        dataset: str = "DreherDoyle",
+        data_path: str = "data/reactions/dreher_doyle_science_aar5169.csv",
+        representation: str = "drfp",
+        feature_dimension: int = 2048,
+        init_sample_size: int = 20,
+        exclude_n_largest: int = 0,
+        init_selection_method: BOInitDataSelection = None,
+        bond_radius: int = 3,
+        transform_output: str = None,
+    ):
+        super().__init__()
+        self.objective_optimum: int = None
+        self.x: torch.tensor = None
+        self.y: torch.tensor = None
+        self.heldout_x: torch.tensor = None
+        self.heldout_y: torch.tensor = None
+        self.train_x: torch.tensor = None
+        self.train_y: torch.tensor = None
+        self.additives_reactions: pd.DataFrame = None
+        self.base_reactions: pd.DataFrame = None
+        self.dataset = dataset
+        self.data_path = data_path
+        self.representation = representation
+        self.bond_radius = bond_radius
+        self.feature_dimension = feature_dimension
+        self.init_sample_size = init_sample_size
+        self.exclude_n_largest = exclude_n_largest
+        self.init_selection_method = init_selection_method
+        self.transform_output = transform_output
+
+        assert (
+            (dataset == "DreherDoyle") & (data_path.find("dreher_doyle") != -1)
+        ) or ((dataset == "SuzukiMiyaura") & (data_path.find("suzuki_miyaura") != -1))
+
+        self.save_hyperparameters()
+        self.setup()
+
+    def featurize(self):
+        """
+        Featurize reaction or additive smiles using defined representation.
+
+        """
+
+        loader = ReactionLoader()
+
+        if self.representation == "ohe":
+            loader.load_benchmark(self.dataset, self.data_path)
+        else:
+            loader.load_benchmark(f"{self.dataset}RXN", self.data_path)
+
+        loader.featurize(
+            self.representation,
+            nBits=self.feature_dimension,
+            bond_radius=self.bond_radius,
+        )
+
+        x = loader.features
+        y = loader.labels.reshape(-1, 1)
+
+        self.x = torch.from_numpy(x).to(torch.float64)
+        self.y = torch.from_numpy(y).to(torch.float64)
+
+    def train_test_split(self, init_indexes, baseline_reaction_index):
+        self.train_indexes = init_indexes
+        self.train_x = self.x[init_indexes]
+        self.train_y = self.y[init_indexes]
+
+        self.heldout_x = torch_delete_rows(
+            self.x, baseline_reaction_index + init_indexes
+        )
+        self.heldout_y = torch_delete_rows(
+            self.y, baseline_reaction_index + init_indexes
+        )
+
+    def setup(self, stage: Optional[str] = None) -> None:
+        self.featurize()
+        init_indexes, clusters = self.init_selection_method.fit(self.x, exclude=[])
+
+        print(f"Selected reactions: {init_indexes}")
+        self.clusters = clusters
+        self.train_indexes = init_indexes
+        self.train_x = self.x[init_indexes]
+        self.train_y = self.y[init_indexes]
+
+        self.heldout_x = torch_delete_rows(self.x, init_indexes)
+        self.heldout_y = torch_delete_rows(self.y, init_indexes)
+
+        self.objective_optimum = torch.max(self.y)
+
+    def get_nth_largest_yield(self, n=10):
+        data = pd.read_csv(self.data_path)
+        return data["yield"].nlargest(n=n).iloc[-1]
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         train_dataset = SingleSampleDataset(self.train_x, self.train_y)
