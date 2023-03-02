@@ -25,6 +25,13 @@ logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("PIL.PngImagePlugin").setLevel(logging.CRITICAL + 1)
 
 
+def get_data_path(dataset):
+    # if representation in ["drfp", "fingerprints", "fragprints"]:
+    if (dataset=="DreherDoyle"):
+        return "data/reactions/dreher_doyle_science_aar5169.csv"
+    elif dataset=='SuzukiMiyaura': 
+        return 'data/reactions/suzuki_miyaura_data.csv'
+
 def get_distance_metric(kernel):
     # if representation in ["drfp", "fingerprints", "fragprints"]:
     if (
@@ -62,6 +69,7 @@ class MyLightningCli(LightningCLI):
         parser.link_arguments("data", "model.data", apply_on="instantiate")
         parser.link_arguments("surrogate_model", "model.model", apply_on="instantiate")
         parser.link_arguments("n_iters", "trainer.max_epochs")
+        parser.link_arguments('seed_everything', 'data_selection.seed')
 
         return super().add_arguments_to_parser(parser)
 

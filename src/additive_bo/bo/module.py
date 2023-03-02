@@ -31,6 +31,7 @@ from additive_bo.surrogate_models.gp import (
     FixedGP,
     HeteroskedasticGP,
     MostLikelyHeteroskedasticGP,
+    CustomMostLikelyHeteroskedasticGP
 )
 
 
@@ -44,6 +45,7 @@ class BoModule(pl.LightningModule):
             HeteroskedasticGP,
             CustomHeteroskedasticGP,
             MostLikelyHeteroskedasticGP,
+            CustomMostLikelyHeteroskedasticGP
         ],
         acquisition_class: str = "ucb",
         beta: float = 0.1,

@@ -367,16 +367,24 @@ class CustomHeteroskedasticGP(SingleTaskGP):
             train_y, train_yvar = outcome_transform(train_y, train_yvar)
 
         self._validate_tensor_args(X=train_x, Y=train_y, Yvar=train_yvar)
-        # validate_input_scaling(train_X=train_x, train_Y=train_y, train_Yvar=train_yvar)
+        validate_input_scaling(train_X=train_x, train_Y=train_y, train_Yvar=train_yvar)
         self._set_dimensions(train_X=train_x, train_Y=train_y)
+
+        noise_likelihood = GaussianLikelihood(
+            noise_prior=SmoothedBoxPrior(-3, 5, 0.5, transform=torch.log),
+            batch_shape=self._aug_batch_shape,
+            noise_constraint=GreaterThan(
+                MIN_INFERRED_NOISE_LEVEL, transform=None, initial_value=1.0
+            ),
+        )
 
         noise_model = SingleTaskGP(
             train_X=train_x,
-            train_Y=train_yvar,
-            # likelihood=GaussianLikelihood(),
+            train_Y=torch.log(train_yvar),
+            # likelihood=noise_likelihood,
             covar_module=ScaleKernel(base_kernel=kernel),
             input_transform=input_transform,  # NOTE: potential 565bug here
-            outcome_transform=Standardize(1),
+            # outcome_transform=Log(),
         )
 
         mll = ExactMarginalLogLikelihood(noise_model.likelihood, noise_model)
@@ -411,8 +419,8 @@ class CustomHeteroskedasticGP(SingleTaskGP):
         self.update_added_loss_term(
             "noise_added_loss", NoiseModelAddedLossTerm(noise_model)
         )
-        if outcome_transform is not None:
-            self.outcome_transform = outcome_transform
+        # if outcome_transform is not None:
+        #     self.outcome_transform = outcome_transform
         # self.to(train_X)
 
     # def forward(self, x):
@@ -514,6 +522,142 @@ from botorch.models.transforms.outcome import ChainedOutcomeTransform, Log
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 
 
+
+class CustomMostLikelyHeteroskedasticGP(CustomHeteroskedasticGP):
+    def __init__(
+        self,
+        train_x: Tensor,
+        train_y: Tensor,
+        noise_val: float = 1e-4,
+        kernel: Kernel = None,
+        standardize: bool = True,
+        normalize: bool = False,
+        zero_mean: bool = False,
+        var_estimate: str = "paper",
+    ):
+
+        # wandb.init(project='additives-plate-1')
+
+        # Chain the transforms together
+        # transform = ChainedOutcomeTransform([log_transform, standardize_transform])
+
+        # print(log_transform(train_y), train_y)
+        # tf1 = Log()
+        # tf2 = Standardize(1)
+        # tf = ChainedOutcomeTransform(tf1=tf1, tf2=tf2)
+        homo_model = SingleTaskGP(
+            train_X=train_x,
+            train_Y=train_y,
+            covar_module=ScaleKernel(base_kernel=kernel),
+            input_transform=Normalize(train_x.shape[-1]) if normalize else None,
+            outcome_transform=Standardize(train_y.shape[-1]) if standardize else None,
+        )
+        #   tf1)
+        # Standardize(train_y.shape[-1]) if standardize else None)
+        homo_model.likelihood.noise_covar.register_constraint(
+            "raw_noise", GreaterThan(1e-3)
+        )
+
+        # print(torch.max(train_x), torch.min(train_x))
+
+        homo_mll = ExactMarginalLogLikelihood(homo_model.likelihood, homo_model)
+        fit_gpytorch_model(homo_mll)
+
+        homo_mll.eval()
+        # test on the training points
+        # call it X_test just for ease of use
+        test_x = train_x.clone()
+        test_y = train_y.clone()
+
+        # homo_mll.eval()
+        with torch.no_grad():
+            # homo_posterior = homo_mll.model.posterior(test_x)
+            # homo_predictive_posterior = homo_mll.model.posterior(test_x,
+            #                                                     observation_noise=True)
+            if var_estimate == "mcr":
+                # watch broadcasting here
+                observed_var = torch.tensor(
+                    np.power(
+                        homo_mll.model.posterior(test_x)
+                        .mean.numpy()
+                        .reshape(
+                            -1,
+                        )
+                        - train_y.numpy(),
+                        2,
+                    ),
+                    dtype=torch.float,
+                )
+            else:
+                sampler = IIDNormalSampler(sample_shape=1000)
+                predictive_posterior = homo_mll.model.posterior(
+                    test_x, observation_noise=True
+                )
+                samples = sampler(predictive_posterior)
+                observed_var = 0.5 * ((samples - train_y.reshape(-1, 1)) ** 2).mean(
+                    dim=0
+                )
+                # print('PREDICTED MEAN', predictive_posterior.mean)
+
+                mean_train = predictive_posterior.mean
+                _, axes = plt.subplots(1, 1, figsize=(6, 4))
+
+                axes.scatter(
+                    train_y.squeeze(),
+                    mean_train.squeeze(),
+                    color="green",  # self.trainer.datamodule.
+                )
+                axes.ticklabel_format(useOffset=False)
+
+                plt.xlabel("Actual")
+                plt.ylabel("Predicted")
+
+                wandb.log({"pred-vs-actual-green": [wandb.Image(axes)]})
+                plt.close("all")
+                plt.clf()
+                plt.cla()
+
+        # print('OBSERVED VARIANCE', observed_var)
+        super().__init__(
+            train_x=train_x,
+            train_y=train_y,
+            noise_val=observed_var,
+            kernel=kernel,
+            standardize=standardize,
+            normalize=normalize,
+            zero_mean=zero_mean,
+            input_warping=False,
+        )
+
+        self.mean_module = ZeroMean() if zero_mean else ConstantMean()
+        self.covar_module = ScaleKernel(base_kernel=kernel)
+        self.noise_val = noise_val
+        self.kernel = kernel
+        self.standardize = standardize
+        self.normalize = normalize
+        self.zero_mean = zero_mean
+        self.var_estimate = var_estimate
+
+    # def forward(self, x):
+    #     mean_x = self.mean_module(x)
+    #     covar_x = self.covar_module(x)
+    #     return MultivariateNormal(mean_x, covar_x)
+
+    def reinit(self, train_x, train_y):
+        return MostLikelyHeteroskedasticGP(
+            train_x,
+            train_y,
+            self.noise_val,
+            self.kernel,
+            self.standardize,
+            self.normalize,
+            self.zero_mean,
+            self.var_estimate,
+        )
+
+
+
+
 class MostLikelyHeteroskedasticGP(FixedGP):
     def __init__(
         self,
@@ -546,7 +690,7 @@ class MostLikelyHeteroskedasticGP(FixedGP):
         #   tf1)
         # Standardize(train_y.shape[-1]) if standardize else None)
         homo_model.likelihood.noise_covar.register_constraint(
-            "raw_noise", GreaterThan(1e-5)
+            "raw_noise", GreaterThan(1e-3)
         )
 
         # print(torch.max(train_x), torch.min(train_x))

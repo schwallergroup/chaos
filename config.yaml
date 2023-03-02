@@ -1,7 +1,7 @@
 # pytorch_lightning==1.8.6
-seed_everything: 19
+seed_everything: 9
 trainer:
-  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f7e00c652b0>
+  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f69b22a12b0>
   enable_checkpointing: true
   callbacks: null
   default_root_dir: null
@@ -61,19 +61,24 @@ model:
   - 10
   batch_size: 1
 data:
-  dataset: DreherDoyle
-  data_path: data/reactions/dreher_doyle_science_aar5169.csv
+  data_path: data/additives_reactions.csv
+  reaction_plate: 3
+  base_additive: N#N
   representation: drfp
-  feature_dimension: 1024
+  feature_dimension: 512
   exclude_n_largest: 0
+  scale_by_baseline: false
+  noise_calc: var
+  dim_reduction: null
+  reduction_size: 64
   bond_radius: 5
   transform_output: null
 n_iters: 100
 n_trials: 20
 data_selection:
-  init_method: believer
+  init_method: cluster-believer-3
   metric: jaccard
-  n_clusters: 20
+  n_clusters: 10
   seed: null
 kernel:
   class_path: additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel
@@ -82,7 +87,6 @@ kernel:
 surrogate_model:
   class_path: additive_bo.surrogate_models.gp.GP
   init_args:
-    noise_val: 0.015
     fix_noise: false
     standardize: true
     normalize: false

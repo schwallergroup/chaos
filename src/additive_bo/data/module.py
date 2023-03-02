@@ -176,11 +176,16 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         elif self.featurize_column == "Additive_Smiles":
             loader = DataLoaderMP()
             loader.features = self.additives_reactions["Additive_Smiles"].to_list()
+
             loader.featurize(
                 self.representation,
                 bond_radius=self.bond_radius,
                 nBits=self.feature_dimension,
             )
+
+            loader.labels = self.additives_reactions[
+                "UV210_Prod AreaAbs"
+            ].to_numpy()
 
             x = loader.features
             y = loader.labels
@@ -206,6 +211,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             y = np.log(y + 1e-6)
 
         # y = y + 1e-1
+
         self.additives_reactions["UV210_Prod AreaAbs"] = y
 
         y = y.reshape(-1, 1)
@@ -264,6 +270,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         self.calculate_noise_error()
         self.featurize()
         self.remove_duplicates()  # will edit additives dataframe
+        print(self.x.shape, 'X shape')
         self.remove_nan_rows()  # will edit additives dataframe
         self.x = self.reduce_dimensionality(
             self.x, reduction_technique=self.dim_reduction
