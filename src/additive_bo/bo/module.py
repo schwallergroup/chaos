@@ -28,10 +28,10 @@ from additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel import (
 from additive_bo.surrogate_models.gp import (
     GP,
     CustomHeteroskedasticGP,
+    CustomMostLikelyHeteroskedasticGP,
     FixedGP,
     HeteroskedasticGP,
     MostLikelyHeteroskedasticGP,
-    CustomMostLikelyHeteroskedasticGP
 )
 
 
@@ -45,12 +45,14 @@ class BoModule(pl.LightningModule):
             HeteroskedasticGP,
             CustomHeteroskedasticGP,
             MostLikelyHeteroskedasticGP,
-            CustomMostLikelyHeteroskedasticGP
+            CustomMostLikelyHeteroskedasticGP,
         ],
         acquisition_class: str = "ucb",
         beta: float = 0.1,
         top_n: List[int] = [1, 3, 5, 10],
         batch_size: int = 1,
+        beta_annealing: int = 0,
+        finetuning: bool = True,
     ):
         super().__init__()
         print(model.noise_val, "NOISE VALUE")
@@ -59,6 +61,8 @@ class BoModule(pl.LightningModule):
         self.model = model
         self.acquisition = None
         self.top_n = top_n
+        self.finetuning = finetuning
+
         # print(
         #     "x_dimensions",
         #     self.trainer.datamodule.train_x.shape,
@@ -67,6 +71,11 @@ class BoModule(pl.LightningModule):
 
         self.acquisition_class = acquisition_class
         self.beta = beta
+        self.beta_annealing = beta_annealing
+
+        if self.beta_annealing > 0:
+            self.beta = 100
+
         self.batch_size = batch_size
 
         self.save_hyperparameters(
@@ -162,15 +171,18 @@ class BoModule(pl.LightningModule):
             self.data.train_y,  # self.trainer.datamodule
         )
         self.log("train/best_so_far", torch.max(train_y))
+
         prev_state = self.model.state_dict()
         self.model = self.model.reinit(train_x=train_x, train_y=train_y)
         self.initialize_mll(likelihood=self.model.likelihood, model=self.model)
 
         self.model.train()  # should ?
-        self.model.load_state_dict(
-            {k: v for k, v in prev_state.items() if "outcome_transform" not in k},
-            strict=False,
-        )
+
+        if self.finetuning:
+            self.model.load_state_dict(
+                {k: v for k, v in prev_state.items() if "outcome_transform" not in k},
+                strict=False,
+            )
 
         # print('bo module, max min data', torch.max(train_x), torch.min(train_x))
 
@@ -224,6 +236,15 @@ class BoModule(pl.LightningModule):
         )
         with torch.no_grad():
             self.optimize_acqf_and_get_observation(heldout_x, heldout_y)
+
+        # if self.beta_annealing:
+        if self.current_epoch < self.beta_annealing:
+            self.beta = self.beta - (100 - 0.1) / 10
+        # elif self.current_epoch <= 20:
+        #     self.beta = self.beta - (100 - 0.1) / 10
+        # else: self.beta = 0.1
+
+        self.log("beta", self.beta)
 
     def validation_step(self, batch, *args, **kwargs):
         self.model.eval()
@@ -350,7 +371,6 @@ class BoModule(pl.LightningModule):
     # def update_train_heldout_data()
 
     def optimize_acqf_and_get_observation(self, heldout_x, heldout_y):
-
         if self.acquisition_class == "random":
             best_idxs = torch.randperm(len(heldout_y))[: self.batch_size]
         else:

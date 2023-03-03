@@ -84,7 +84,6 @@ class ReactionLoader(DataLoader):
             )
 
     def load_benchmark(self, benchmark, path):
-
         """Loads features and labels from one of the included benchmark datasets
                 and feeds them into the DataLoader.
 
@@ -117,14 +116,12 @@ class ReactionLoader(DataLoader):
         }
 
         if benchmark not in benchmarks.keys():
-
             raise Exception(
                 f"The specified benchmark choice ({benchmark}) is not a valid option. "
                 f"Choose one of {list(benchmarks.keys())}."
             )
 
         else:
-
             df = pd.read_csv(path)
             # drop nans from the datasets
             nans = df[benchmarks[benchmark]["labels"]].isnull().to_list()

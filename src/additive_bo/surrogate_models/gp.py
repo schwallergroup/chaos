@@ -17,8 +17,14 @@ from botorch.models.gp_regression import (
     SingleTaskGP,
 )
 from botorch.models.transforms.input import InputTransform, Normalize, Warp
-from botorch.models.transforms.outcome import Log, OutcomeTransform, Standardize
+from botorch.models.transforms.outcome import (
+    ChainedOutcomeTransform,
+    Log,
+    OutcomeTransform,
+    Standardize,
+)
 from botorch.models.utils import validate_input_scaling
+from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.sampling import IIDNormalSampler
 
 # from torch import Tensor
@@ -30,6 +36,7 @@ from gpytorch.distributions.multitask_multivariate_normal import (
 )
 from gpytorch.distributions.multivariate_normal import MultivariateNormal
 from gpytorch.kernels import Kernel, RBFKernel, ScaleKernel
+from gpytorch.kernels.matern_kernel import MaternKernel
 from gpytorch.likelihoods import LaplaceLikelihood
 from gpytorch.likelihoods.gaussian_likelihood import (
     GaussianLikelihood,
@@ -78,7 +85,6 @@ class GP(SingleTaskGP):
         zero_mean: bool = False,
         input_warping: bool = False,
     ):
-
         warp_tf = None
         if input_warping:
             warp_tf = Warp(
@@ -88,17 +94,42 @@ class GP(SingleTaskGP):
                 concentration1_prior=LogNormalPrior(0.0, 0.75**0.5),
                 concentration0_prior=LogNormalPrior(0.0, 0.75**0.5),
             )
+
+        # self._validate_tensor_args(X=train_x, Y=train_y)
+        # validate_input_scaling(train_X=train_x, train_Y=train_y)
+        self._set_dimensions(train_X=train_x, train_Y=train_y)
+
+        if kernel is None:
+            kernel = MaternKernel(
+                nu=2.5,
+                ard_num_dims=train_x.shape[-1],
+                batch_shape=self._aug_batch_shape,
+                lengthscale_prior=GammaPrior(3.0, 6.0),
+            )
+
+        noise_prior = GammaPrior(1.1, 0.05)
+        noise_prior_mode = (noise_prior.concentration - 1) / noise_prior.rate
+        likelihood = GaussianLikelihood(
+            noise_prior=noise_prior,
+            batch_shape=self._aug_batch_shape,
+            noise_constraint=GreaterThan(
+                MIN_INFERRED_NOISE_LEVEL,
+                transform=None,
+                initial_value=noise_prior_mode,
+            ),
+        )
         super().__init__(
             train_x,
             train_y,
             # StudentTLikelihood(500
-            GaussianLikelihood(
-                noise_prior=GammaPrior(2.0, 0.15)
-                # noise_constraint=Interval(MIN_INFERRED_NOISE_LEVEL, noise_val * 2)
-                # transform=None,
-                # initial_value=1.0
-                # noise_covar=torch.tensor([0.15], requires_grad=False)
-            ).double(),
+            likelihood=likelihood.double(),
+            # GaussianLikelihood(
+            #     noise_prior=GammaPrior(2.0, 0.15)
+            # noise_constraint=Interval(MIN_INFERRED_NOISE_LEVEL, noise_val * 2)
+            # transform=None,
+            # initial_value=1.0
+            # noise_covar=torch.tensor([0.15], requires_grad=False)
+            covar_module=ScaleKernel(base_kernel=kernel),
             outcome_transform=Standardize(train_y.shape[-1]) if standardize else None,
             input_transform=Normalize(train_x.shape[-1]) if normalize else warp_tf,
         )
@@ -126,7 +157,7 @@ class GP(SingleTaskGP):
 
         # Create the RBF kernel with the Gamma prior on lengthscale
         # kernel = RBFKernel(lengthscale_prior=lengthscale_prior)
-        self.covar_module = ScaleKernel(base_kernel=kernel)
+        # self.covar_module = ScaleKernel(base_kernel=kernel)
         self.noise_val = noise_val
         self.fix_noise = fix_noise
         self.kernel = kernel
@@ -518,10 +549,6 @@ class CustomHeteroskedasticGP(SingleTaskGP):
 #             self.var_estimate,
 #         )
 
-from botorch.models.transforms.outcome import ChainedOutcomeTransform, Log
-from botorch.posteriors.gpytorch import GPyTorchPosterior
-
-
 
 class CustomMostLikelyHeteroskedasticGP(CustomHeteroskedasticGP):
     def __init__(
@@ -535,7 +562,6 @@ class CustomMostLikelyHeteroskedasticGP(CustomHeteroskedasticGP):
         zero_mean: bool = False,
         var_estimate: str = "paper",
     ):
-
         # wandb.init(project='additives-plate-1')
 
         # Chain the transforms together
@@ -656,8 +682,6 @@ class CustomMostLikelyHeteroskedasticGP(CustomHeteroskedasticGP):
         )
 
 
-
-
 class MostLikelyHeteroskedasticGP(FixedGP):
     def __init__(
         self,
@@ -670,7 +694,6 @@ class MostLikelyHeteroskedasticGP(FixedGP):
         zero_mean: bool = False,
         var_estimate: str = "paper",
     ):
-
         # wandb.init(project='additives-plate-1')
 
         # Chain the transforms together
@@ -680,6 +703,17 @@ class MostLikelyHeteroskedasticGP(FixedGP):
         tf1 = Log()
         # tf2 = Standardize(1)
         # tf = ChainedOutcomeTransform(tf1=tf1, tf2=tf2)
+
+        self._set_dimensions(train_X=train_x, train_Y=train_y)
+
+        if kernel is None:
+            kernel = MaternKernel(
+                nu=2.5,
+                ard_num_dims=train_x.shape[-1],
+                batch_shape=self._aug_batch_shape,
+                lengthscale_prior=GammaPrior(3.0, 6.0),
+            )
+
         homo_model = SingleTaskGP(
             train_X=train_x,
             train_Y=train_y,
@@ -747,7 +781,7 @@ class MostLikelyHeteroskedasticGP(FixedGP):
                 plt.xlabel("Actual")
                 plt.ylabel("Predicted")
 
-                wandb.log({"pred-vs-actual-green": [wandb.Image(axes)]})
+                # wandb.log({"pred-vs-actual-green": [wandb.Image(axes)]})
                 plt.close("all")
                 plt.clf()
                 plt.cla()
@@ -756,7 +790,7 @@ class MostLikelyHeteroskedasticGP(FixedGP):
         super().__init__(
             train_x=train_x,
             train_y=train_y,
-            noise_val=observed_var,
+            noise_val=noise_val,  # observed_var,
             kernel=kernel,
             standardize=standardize,
             normalize=normalize,
@@ -764,8 +798,10 @@ class MostLikelyHeteroskedasticGP(FixedGP):
             input_warping=False,
         )
 
+        print(noise_val, "noise val")
+        print(observed_var, "observed var")
         self.mean_module = ZeroMean() if zero_mean else ConstantMean()
-        self.covar_module = ScaleKernel(base_kernel=kernel)
+        # self.covar_module = ScaleKernel(base_kernel=kernel)
         self.noise_val = noise_val
         self.kernel = kernel
         self.standardize = standardize

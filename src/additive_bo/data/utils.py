@@ -1,6 +1,6 @@
-__all__ = ["torch_delete_rows"]
-
 import torch
+
+__all__ = ["torch_delete_rows"]
 
 
 def torch_delete_rows(tensor, indices):

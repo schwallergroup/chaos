@@ -4,6 +4,8 @@ molecular property prediction datasets.
 """
 import numpy as np
 import pandas as pd
+from rdkit.Chem import MolFromSmiles
+
 from additive_bo.gprotorch.data_featuriser import (
     bag_of_characters,
     cddd,
@@ -15,7 +17,6 @@ from additive_bo.gprotorch.data_featuriser import (
     xtb,
 )
 from additive_bo.gprotorch.dataloader import DataLoader
-from rdkit.Chem import MolFromSmiles
 
 
 class DataLoaderMP(DataLoader):
@@ -53,7 +54,6 @@ class DataLoaderMP(DataLoader):
 
         # iterate through the features
         for i in range(len(self.features)):
-
             # try to convert each SMILES to an rdkit molecule
             mol = MolFromSmiles(self.features[i])
 
@@ -104,17 +104,14 @@ class DataLoaderMP(DataLoader):
         ]
 
         if representation == "fingerprints":
-
             self.features = fingerprints(
                 self.features, bond_radius=bond_radius, nBits=nBits
             )
 
         elif representation == "fragments":
-
             self.features = fragments(self.features)
 
         elif representation == "fragprints":
-
             self.features = np.concatenate(
                 (
                     fingerprints(self.features, bond_radius=bond_radius, nBits=nBits),
@@ -187,11 +184,9 @@ class DataLoaderMP(DataLoader):
             )
 
         elif representation == "bag_of_selfies":
-
             self.features = bag_of_characters(self.features, selfies=True)
 
         elif representation == "bag_of_smiles":
-
             self.features = bag_of_characters(self.features)
 
         elif representation == "random":
@@ -201,7 +196,6 @@ class DataLoaderMP(DataLoader):
             self.features = chemberta_features(self.features)
 
         elif representation == "chemberta+xtb":
-
             self.features = np.concatenate(
                 (
                     chemberta_features(self.features),
@@ -211,7 +205,6 @@ class DataLoaderMP(DataLoader):
             )
 
         elif representation == "chemberta+xtb+mqn":
-
             self.features = np.concatenate(
                 (
                     chemberta_features(self.features),
@@ -225,7 +218,6 @@ class DataLoaderMP(DataLoader):
             self.features = graphs(self.features, graphein_config)
 
         else:
-
             raise Exception(
                 f"The specified representation choice {representation} is not a valid option."
                 f"Choose between {valid_representations}."
@@ -268,7 +260,6 @@ class DataLoaderMP(DataLoader):
             )
 
         else:
-
             raise ValueError(
                 f"The specified benchmark choice ({benchmark}) is not a valid option. "
                 f"Choose one of {list(benchmarks.keys())}."

@@ -1,4 +1,5 @@
 from torch import Tensor
+from torch.utils.data import Dataset
 from torch.utils.data.dataset import Dataset
 
 
@@ -13,9 +14,6 @@ class SingleSampleDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.samples[idx]
-
-
-from torch.utils.data import Dataset
 
 
 class DynamicSet(Dataset):

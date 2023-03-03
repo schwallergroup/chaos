@@ -145,7 +145,6 @@ def start_new_run(seed):
 
 
 def cli_main():
-
     group = generate_group_name()
     cli = MyLightningCli(
         model_class=BoModule,

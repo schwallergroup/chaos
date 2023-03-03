@@ -183,9 +183,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
                 nBits=self.feature_dimension,
             )
 
-            loader.labels = self.additives_reactions[
-                "UV210_Prod AreaAbs"
-            ].to_numpy()
+            loader.labels = self.additives_reactions["UV210_Prod AreaAbs"].to_numpy()
 
             x = loader.features
             y = loader.labels
@@ -228,7 +226,6 @@ class BOAdditivesDataModule(pl.LightningDataModule):
 
     def reduce_dimensionality(self, data, reduction_technique=None):
         if reduction_technique == "VAE":
-
             vae = VAE(self.feature_dimension, self.reduction_size, 256)
             # vae = VAE(self.feature_dimension, self.reduction_size)
             # vae.load_state_dict(torch.load(f"notebooks/vae-{self.reduction_size}.pth"))
@@ -270,7 +267,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         self.calculate_noise_error()
         self.featurize()
         self.remove_duplicates()  # will edit additives dataframe
-        print(self.x.shape, 'X shape')
+        print(self.x.shape, "X shape")
         self.remove_nan_rows()  # will edit additives dataframe
         self.x = self.reduce_dimensionality(
             self.x, reduction_technique=self.dim_reduction
@@ -320,7 +317,6 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         self.objective_optimum = torch.max(self.y)
 
     def plot_latent_space(self, method="pca"):
-
         # fig = plt.figure()
         # for x, y, col, m, s in zip(components[:, 0][sorted_indices], components[:, 1][sorted_indices],
         #                            np.array(colors)[sorted_indices], np.array(markers)[sorted_indices],
