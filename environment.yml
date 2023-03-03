@@ -29,6 +29,7 @@ dependencies:
     - scikit-learn-extra
     - jsonargparse[signatures]
     - git+https://github.com/cornellius-gp/gpytorch.git
+    - pyDOE
    #  - git+https://github.com/pytorch/botorch.git
  - pre_commit
    # additional installs:
