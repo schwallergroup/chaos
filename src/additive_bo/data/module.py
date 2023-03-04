@@ -154,7 +154,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             additive_representation = self.representation.replace("drfp", "")
             additive_loader = DataLoaderMP()
             additive_loader.features = self.additives_reactions[
-                "Additive_Smiles4"
+                "Additive_Smiles"
             ].to_list()
             additive_loader.featurize(
                 additive_representation,

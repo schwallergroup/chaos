@@ -172,34 +172,39 @@ class BoModule(pl.LightningModule):
         )
         self.log("train/best_so_far", torch.max(train_y))
 
-        prev_state = self.model.state_dict()
-        self.model = self.model.reinit(train_x=train_x, train_y=train_y)
-        self.initialize_mll(likelihood=self.model.likelihood, model=self.model)
+        if self.acquisition_class != "random":
+            prev_state = self.model.state_dict()
+            self.model = self.model.reinit(train_x=train_x, train_y=train_y)
+            self.initialize_mll(likelihood=self.model.likelihood, model=self.model)
 
-        self.model.train()  # should ?
+            self.model.train()  # should ?
 
-        if self.finetuning:
-            self.model.load_state_dict(
-                {k: v for k, v in prev_state.items() if "outcome_transform" not in k},
-                strict=False,
-            )
+            if self.finetuning:
+                self.model.load_state_dict(
+                    {
+                        k: v
+                        for k, v in prev_state.items()
+                        if "outcome_transform" not in k
+                    },
+                    strict=False,
+                )
 
-        # print('bo module, max min data', torch.max(train_x), torch.min(train_x))
+            # print('bo module, max min data', torch.max(train_x), torch.min(train_x))
 
-        fit_gpytorch_mll(self.mll, max_retries=50)
+            fit_gpytorch_mll(self.mll, max_retries=50)
 
-        for param_name, param in self.model.named_parameters():
+            for param_name, param in self.model.named_parameters():
+                try:
+                    self.log(param_name, param)
+                except ValueError:
+                    pass
+
+                    # self.log(param_name, wandb.Histogram(param.detach()))
+            self.log("model_output_scale", self.model.covar_module.outputscale)
             try:
-                self.log(param_name, param)
-            except ValueError:
+                self.log("likelihood_noise", self.model.likelihood.noise)
+            except:
                 pass
-
-                # self.log(param_name, wandb.Histogram(param.detach()))
-        self.log("model_output_scale", self.model.covar_module.outputscale)
-        try:
-            self.log("likelihood_noise", self.model.likelihood.noise)
-        except:
-            pass
 
         # mean_values = []
         # uncertainties = []
