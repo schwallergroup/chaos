@@ -150,13 +150,14 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         Featurize reaction or additive smiles using defined representation.
 
         """
-        if self.representation == "drfpfingerprints":
+        if self.representation in ["drfpfingerprints", "drfpfragprints"]:
+            additive_representation = self.representation.replace("drfp", "")
             additive_loader = DataLoaderMP()
             additive_loader.features = self.additives_reactions[
-                "Additive_Smiles"
+                "Additive_Smiles4"
             ].to_list()
             additive_loader.featurize(
-                "fingerprints",
+                additive_representation,
                 bond_radius=self.bond_radius,
                 nBits=self.feature_dimension,
             )

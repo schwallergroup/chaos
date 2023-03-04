@@ -154,7 +154,7 @@ def cli_main():
         save_config_kwargs={"overwrite": True},
         trainer_defaults={
             "logger": WandbLogger(  # save_dir=f'./wandb-save-dir/{group}',
-                project="additives"
+                project="additives-report"
             ),
             "log_every_n_steps": 1,
             "min_epochs": 1,

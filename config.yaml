@@ -1,7 +1,7 @@
 # pytorch_lightning==1.8.6
-seed_everything: 10
+seed_everything: 7
 trainer:
-  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f7991c35eb0>
+  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f14b64b32b0>
   enable_checkpointing: true
   callbacks: null
   default_root_dir: null
@@ -60,25 +60,25 @@ model:
   - 5
   - 10
   batch_size: 1
-  beta_annealing: 10
+  beta_annealing: 0
   finetuning: true
 data:
   data_path: data/additives_reactions.csv
   reaction_plate: 2
   base_additive: N#N
-  representation: drfp
+  representation: drfpfragprints
   feature_dimension: 512
   exclude_n_largest: 0
   scale_by_baseline: false
   noise_calc: var
   dim_reduction: null
   reduction_size: 64
-  bond_radius: 5
+  bond_radius: 3
   transform_output: null
 n_iters: 100
 n_trials: 20
 data_selection:
-  init_method: random-from-clusters
+  init_method: random
   metric: jaccard
   n_clusters: 10
   seed: null

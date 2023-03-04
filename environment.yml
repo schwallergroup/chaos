@@ -30,6 +30,7 @@ dependencies:
     - jsonargparse[signatures]
     - git+https://github.com/cornellius-gp/gpytorch.git
     - pyDOE
+    - sobol_seq
    #  - git+https://github.com/pytorch/botorch.git
  - pre_commit
    # additional installs:
