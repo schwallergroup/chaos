@@ -53,6 +53,13 @@ class MyLightningCli(LightningCLI):
         parser.add_subclass_arguments(gpytorch.kernels.Kernel, "kernel")
 
         parser.link_arguments(
+            "data.dataset",
+            "data.data_path",
+            apply_on="parse",
+            compute_fn=get_data_path,
+        )
+
+        parser.link_arguments(
             "data_selection", "data.init_selection_method", apply_on="instantiate"
         )
         parser.link_arguments(
@@ -69,6 +76,7 @@ class MyLightningCli(LightningCLI):
         )
         parser.link_arguments("data", "model.data", apply_on="instantiate")
         parser.link_arguments("surrogate_model", "model.model", apply_on="instantiate")
+
         parser.link_arguments("n_iters", "trainer.max_epochs")
         parser.link_arguments("seed_everything", "data_selection.seed")
 
