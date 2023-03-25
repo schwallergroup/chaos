@@ -1,9 +1,9 @@
 import pandas as pd
-
 from additive_bo.gprotorch.data_featuriser import (
     bag_of_characters,
     drfp,
     drxnfp,
+    gpt2,
     one_hot,
     rxnfp,
     rxnfp2,
@@ -53,6 +53,7 @@ class ReactionLoader(DataLoader):
             "drfp",
             "drxnfp",
             "bag_of_smiles",
+            "gpt2",
         ]
 
         if representation == "ohe":
@@ -68,6 +69,8 @@ class ReactionLoader(DataLoader):
             self.features = drfp(
                 self.features.to_list(), nBits=nBits, bond_radius=bond_radius
             )
+        elif representation == "gpt2":
+            self.features == gpt2(self.features.to_list())
 
         elif representation == "drxnfp":
             self.features = drxnfp(

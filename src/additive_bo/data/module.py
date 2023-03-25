@@ -7,20 +7,22 @@ import pandas as pd
 import plotly.express as px
 import pytorch_lightning as pl
 import torch
-from botorch.models.transforms.input import Normalize
-from matplotlib import pyplot as plt
-from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
-from scipy import stats
-from scipy.stats import sem
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-from torch.utils.data import DataLoader
-
 from additive_bo.data.dataset import DynamicSet, SingleSampleDataset
 from additive_bo.data.reduction.vae import VAE, train_vae
 from additive_bo.data.utils import torch_delete_rows
 from additive_bo.data_init_selection.clustering import BOInitDataSelection
 from additive_bo.gprotorch.dataloader import DataLoaderMP, ReactionLoader
+from botorch.models.transforms.input import Normalize
+from matplotlib import pyplot as plt
+from pytorch_lightning.utilities.types import (
+    EVAL_DATALOADERS,
+    TRAIN_DATALOADERS,
+)
+from scipy import stats
+from scipy.stats import sem
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from torch.utils.data import DataLoader
 
 
 class BOAdditivesDataModule(pl.LightningDataModule):
@@ -54,6 +56,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         self.train_x: torch.tensor = None
         self.train_y: torch.tensor = None
         self.additives_reactions: pd.DataFrame = None
+        # self.experiments_history: pd.DataFrame = None
         self.base_reactions: pd.DataFrame = None
 
         self.data_path = data_path
@@ -118,17 +121,22 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             self.noise = self.base_reactions.std()
 
     def remove_nan_rows(self):
-        mask = torch.isnan(self.x).any(dim=1)
+        mask = torch.isnan(torch.stack(self.additives_reactions["x"].tolist())).any(
+            dim=1
+        )
         indices_to_delete = mask.nonzero().flatten().tolist()
-        self.x = torch_delete_rows(self.x, indices_to_delete)
-        self.y = torch_delete_rows(self.y, indices_to_delete)
+        # self.x = torch_delete_rows(self.x, indices_to_delete)
+        # self.y = torch_delete_rows(self.y, indices_to_delete)
         self.additives_reactions = self.additives_reactions.drop(
             index=indices_to_delete
         ).reset_index(drop=True)
 
     def remove_duplicates(self):
         __, inv, counts = torch.unique(
-            self.x, return_inverse=True, return_counts=True, dim=0
+            torch.stack(self.additives_reactions["x"].tolist()),
+            return_inverse=True,
+            return_counts=True,
+            dim=0,
         )
         duplicates = tuple(
             [
@@ -139,8 +147,8 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         )
         if len(duplicates) > 0:
             indices_to_delete = list(chain(*[x[1:] for x in duplicates]))
-            self.x = torch_delete_rows(self.x, indices_to_delete)
-            self.y = torch_delete_rows(self.y, indices_to_delete)
+            # self.x = torch_delete_rows(self.x, indices_to_delete)
+            # self.y = torch_delete_rows(self.y, indices_to_delete)
             self.additives_reactions = self.additives_reactions.drop(
                 index=indices_to_delete
             ).reset_index(drop=True)
@@ -215,8 +223,24 @@ class BOAdditivesDataModule(pl.LightningDataModule):
 
         y = y.reshape(-1, 1)
 
-        self.x = torch.from_numpy(x).to(torch.float64)  # .to('cuda')
-        self.y = torch.from_numpy(y).to(torch.float64)  # .to('cuda')
+        x = torch.from_numpy(x).to(torch.float64)  # .to('cuda')
+        y = torch.from_numpy(y).to(torch.float64)  # .to('cuda')
+
+        self.additives_reactions["x"] = [row for row in x]
+        self.additives_reactions["y"] = [row for row in y]
+
+    def featurize_x(self, x):
+        loader = DataLoaderMP()
+        loader.features = x
+
+        loader.featurize(
+            self.representation,
+            bond_radius=self.bond_radius,
+            nBits=self.feature_dimension,
+        )
+
+        x = loader.features
+        return torch.from_numpy(x).to(torch.float64)
 
     def get_baseline_reaction(self):
         return self.additives_reactions[
@@ -268,11 +292,10 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         self.calculate_noise_error()
         self.featurize()
         self.remove_duplicates()  # will edit additives dataframe
-        print(self.x.shape, "X shape")
         self.remove_nan_rows()  # will edit additives dataframe
-        self.x = self.reduce_dimensionality(
-            self.x, reduction_technique=self.dim_reduction
-        )
+        # self.x = self.reduce_dimensionality(
+        #     self.x, reduction_technique=self.dim_reduction
+        # )
         # data_for_clustering = self.reduce_dimensionality(self.x, reduction_technique=self.dim_reduction)
 
         baseline_reaction_index = self.get_baseline_reaction()
@@ -281,7 +304,8 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             n=self.exclude_n_largest
         )
         init_indexes, clusters = self.init_selection_method.fit(
-            self.x, exclude=baseline_reaction_index + high_yield_rxn_indexes
+            torch.stack(self.additives_reactions["x"].tolist()),
+            exclude=baseline_reaction_index + high_yield_rxn_indexes,
         )
         # init_indexes, clusters = self.init_selection_method.fit(
         #     data_for_clustering, exclude=baseline_reaction_index + high_yield_rxn_indexes
@@ -292,16 +316,29 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         print(f"Selected reactions: {init_indexes}")
         # train_indexes = [baseline_reaction_index] + init_indexes
         self.clusters = clusters
+        all_indexes_set = set(self.additives_reactions.index)
         self.train_indexes = init_indexes
-        self.train_x = self.x[init_indexes]  # init_indexes
-        self.train_y = self.y[init_indexes]
 
-        self.heldout_x = torch_delete_rows(
-            self.x, baseline_reaction_index + init_indexes
-        )  # x[heldout_indices]
-        self.heldout_y = torch_delete_rows(
-            self.y, baseline_reaction_index + init_indexes
-        )  # y[heldout_indices]
+        # self.train_x = self.x[init_indexes]  # init_indexes
+        # self.train_y = self.y[init_indexes]
+
+        # self.heldout_x = torch_delete_rows(
+        #     self.x, baseline_reaction_index + init_indexes
+        # )  # x[heldout_indices]
+        # self.heldout_y = torch_delete_rows(
+        #     self.y, baseline_reaction_index + init_indexes
+        # )  # y[heldout_indices]
+
+        self.heldout_indexes = list(
+            all_indexes_set - set(self.train_indexes) - set(baseline_reaction_index)
+        )
+
+        self.train_x = torch.stack(
+            self.additives_reactions.iloc[self.train_indexes]["x"].tolist()
+        )
+        self.heldout_x = torch.stack(
+            self.additives_reactions.iloc[self.heldout_indexes]["x"].tolist()
+        )
 
         # print(self.trainer, "SELF TRAINER JEBEM TI MATER")
         # self.train_x = self.train_x.to('cuda')
@@ -315,7 +352,9 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         # self.heldout_x = self.heldout_x[shuffle_indices]
         # self.heldout_y = self.heldout_y[shuffle_indices]
 
-        self.objective_optimum = torch.max(self.y)
+        self.objective_optimum = torch.max(
+            torch.stack(self.additives_reactions["y"].tolist())
+        )
 
     def plot_latent_space(self, method="pca"):
         # fig = plt.figure()
@@ -439,11 +478,25 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         return self.additives_reactions["UV210_Prod AreaAbs"].nlargest(n=n).iloc[-1]
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
-        train_dataset = SingleSampleDataset(self.train_x, self.train_y)
+        train_dataset = SingleSampleDataset(
+            torch.stack(
+                self.additives_reactions["x"].iloc[self.train_indexes].tolist()
+            ),
+            torch.stack(
+                self.additives_reactions["y"].iloc[self.train_indexes].tolist()
+            ),
+        )
         return DataLoader(train_dataset, num_workers=4)
 
     def val_dataloader(self) -> EVAL_DATALOADERS:
-        valid_dataset = SingleSampleDataset(self.heldout_x, self.heldout_y)
+        valid_dataset = SingleSampleDataset(
+            torch.stack(
+                self.additives_reactions["x"].iloc[self.heldout_indexes].tolist()
+            ),
+            torch.stack(
+                self.additives_reactions["y"].iloc[self.train_indexes].tolist()
+            ),
+        )
         return DataLoader(valid_dataset, num_workers=4)
 
     def transfer_batch_to_device(self, batch, device, dataloader_idx):

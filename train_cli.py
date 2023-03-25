@@ -6,6 +6,16 @@ import string
 import sys
 
 import gpytorch
+import wandb
+from additive_bo.bo.module import BoModule
+from additive_bo.data.module import BOAdditivesDataModule
+from additive_bo.data_init_selection.clustering import BOInitDataSelection
+from additive_bo.surrogate_models.gp import (  # noqa F401
+    GP,
+    FixedGP,
+    HeteroskedasticGP,
+)
+from additive_bo.utils import flatten
 from botorch.models.model import Model as BaseModel
 from pytorch_lightning.callbacks import Timer
 from pytorch_lightning.cli import (
@@ -15,19 +25,12 @@ from pytorch_lightning.cli import (
 )
 from pytorch_lightning.loggers import WandbLogger
 
-import wandb
-from additive_bo.bo.module import BoModule
-from additive_bo.data.module import BOAdditivesDataModule
-from additive_bo.data_init_selection.clustering import BOInitDataSelection
-from additive_bo.surrogate_models.gp import GP, FixedGP, HeteroskedasticGP  # noqa F401
-from additive_bo.utils import flatten
-
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("PIL.PngImagePlugin").setLevel(logging.CRITICAL + 1)
 
 
 def get_mol_or_rxn_smile(representation):
-    if representation in ["rxnfp", "drfp"]:
+    if representation in ["rxnfp", "drfp", "gpt2"]:
         return "reaction_smiles"
     return "Additive_Smiles"
 

@@ -16,7 +16,13 @@ from rxnfp.transformer_fingerprints import (
 from sklearn.feature_extraction.text import CountVectorizer
 
 # Reactions
-from transformers import AutoModelWithLMHead, AutoTokenizer, BertModel
+from transformers import (
+    AutoModelWithLMHead,
+    AutoTokenizer,
+    BertModel,
+    GPT2Model,
+    GPT2Tokenizer,
+)
 
 
 def one_hot(df):
@@ -79,7 +85,28 @@ def drfp(reaction_smiles, bond_radius=3, nBits=2048):
 
     """
     fps = DrfpEncoder.encode(reaction_smiles, n_folded_length=nBits, radius=bond_radius)
+    print(np.array(fps, dtype=np.float64).shape, "drfp vectors shape")
+
     return np.array(fps, dtype=np.float64)
+
+
+def gpt2(reaction_smiles):
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    model = GPT2Model.from_pretrained("gpt2", output_hidden_states=True)
+
+    def get_sentence_vector(reaction, tokenizer, model):
+        tokens = tokenizer(reaction, return_tensors="pt")
+        with torch.no_grad():
+            outputs = model(**tokens)
+        hidden_states = outputs.hidden_states[-1]
+        sentence_vector = hidden_states.mean(dim=1).squeeze().numpy().astype(np.float64)
+        return sentence_vector
+
+    reaction_vectors = [
+        get_sentence_vector(reaction, tokenizer, model) for reaction in reaction_smiles
+    ]
+    print(np.array(reaction_vectors).shape, "reaction vectors shape")
+    return np.array(reaction_vectors)
 
 
 def drxnfp(reaction_smiles, bond_radius=3, nBits=2048):

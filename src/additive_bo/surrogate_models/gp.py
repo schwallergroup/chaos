@@ -8,6 +8,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pytorch_lightning as pl
 import torch
+import wandb
+from additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel import (
+    TanimotoKernel,
+)
 from botorch import fit_gpytorch_model
 from botorch.models.fully_bayesian import SaasFullyBayesianSingleTaskGP
 from botorch.models.gp_regression import (
@@ -48,11 +52,6 @@ from gpytorch.mlls.noise_model_added_loss_term import NoiseModelAddedLossTerm
 from gpytorch.priors import GammaPrior, LogNormalPrior
 from gpytorch.priors.smoothed_box_prior import SmoothedBoxPrior
 from torch import Tensor
-
-import wandb
-from additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel import (
-    TanimotoKernel,
-)
 
 
 class StudentTLikelihood(gpytorch.likelihoods.Likelihood):
@@ -682,7 +681,7 @@ class CustomMostLikelyHeteroskedasticGP(CustomHeteroskedasticGP):
         )
 
 
-class MostLikelyHeteroskedasticGP(FixedGP):
+class MostLikelyHeteroskedasticGP(HeteroskedasticGP):
     def __init__(
         self,
         train_x: Tensor,
@@ -718,8 +717,8 @@ class MostLikelyHeteroskedasticGP(FixedGP):
             train_X=train_x,
             train_Y=train_y,
             covar_module=ScaleKernel(base_kernel=kernel),
-            input_transform=Normalize(train_x.shape[-1]) if normalize else None,
-            outcome_transform=Standardize(train_y.shape[-1]) if standardize else None,
+            # input_transform=Normalize(train_x.shape[-1]) if normalize else None,
+            # outcome_transform=Standardize(train_y.shape[-1]) if standardize else None,
         )
         #   tf1)
         # Standardize(train_y.shape[-1]) if standardize else None)
@@ -781,7 +780,7 @@ class MostLikelyHeteroskedasticGP(FixedGP):
                 plt.xlabel("Actual")
                 plt.ylabel("Predicted")
 
-                # wandb.log({"pred-vs-actual-green": [wandb.Image(axes)]})
+                wandb.log({"pred-vs-actual-green": [wandb.Image(axes)]})
                 plt.close("all")
                 plt.clf()
                 plt.cla()
@@ -798,8 +797,8 @@ class MostLikelyHeteroskedasticGP(FixedGP):
             input_warping=False,
         )
 
-        print(noise_val, "noise val")
-        print(observed_var, "observed var")
+        # print(noise_val, "noise val")
+        # print(observed_var, "observed var")
         self.mean_module = ZeroMean() if zero_mean else ConstantMean()
         # self.covar_module = ScaleKernel(base_kernel=kernel)
         self.noise_val = noise_val

@@ -4,6 +4,7 @@ from .bo import *
 from .data import *
 from .data_init_selection import *
 from .gprotorch import *
+from .LLMInterface import LLMInterface
 from .surrogate_models import *
 
 if sys.version_info[:2] >= (3, 8):

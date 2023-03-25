@@ -2,6 +2,7 @@ import random
 
 import numpy as np
 import torch
+from additive_bo.data.utils import torch_delete_rows
 from pyDOE import lhs
 from rdkit.ML.Cluster.Butina import ClusterData
 from scipy.spatial.distance import cdist
@@ -13,8 +14,6 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import pairwise_distances
 from sklearn_extra.cluster import KMedoids
 from sobol_seq import i4_sobol_generate
-
-from additive_bo.data.utils import torch_delete_rows
 
 
 def get_original_index(row, x):
@@ -345,19 +344,25 @@ class BOInitDataSelection:
 
             labels = kmedoids.labels_
             cluster_centers_indices = kmedoids.medoid_indices_
+            cluster_centers = kmedoids.cluster_centers_
 
             # print(cluster_centers, 'cluster centers')
 
             # Create a dictionary to store the cluster centers and points
             clusters = {}
             print(kmedoids.inertia_, "inertia")
-            for i, label in enumerate(range(len(cluster_centers_indices))):
+            for i, (label, center) in enumerate(
+                zip(range(len(cluster_centers_indices)), cluster_centers)
+            ):
                 # if label not in clusters:
                 #     clusters[label] = []
                 center_index = cluster_centers_indices[label]
 
                 # compute the distance of each point in the cluster to the center
-                distances = np.linalg.norm(x_init - x_init[center_index, :], axis=1)
+                # distances = np.linalg.norm(x_init - x_init[center_index, :], axis=1)
+                distances = cdist(x_init, center.reshape(1, -1), metric=self.metric)
+                # todo which distance metric should be used for which representation
+
                 # get the indices of the points in the current cluster
                 cluster_indices = np.where(labels == label)[0]
                 # sort the indices by the distances of the corresponding points to the center

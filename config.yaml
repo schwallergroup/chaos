@@ -1,7 +1,7 @@
 # pytorch_lightning==1.8.6
-seed_everything: 7
+seed_everything: 9
 trainer:
-  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f14b64b32b0>
+  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f82524ecdc0>
   enable_checkpointing: true
   callbacks: null
   default_root_dir: null
@@ -64,10 +64,10 @@ model:
   finetuning: true
 data:
   data_path: data/additives_reactions.csv
-  reaction_plate: 2
+  reaction_plate: 1
   base_additive: N#N
-  representation: drfpfragprints
-  feature_dimension: 512
+  representation: drfp
+  feature_dimension: 2048
   exclude_n_largest: 0
   scale_by_baseline: false
   noise_calc: var
@@ -78,8 +78,8 @@ data:
 n_iters: 100
 n_trials: 20
 data_selection:
-  init_method: random
-  metric: jaccard
+  init_method: believer-3
+  metric: euclidean
   n_clusters: 10
   seed: null
 kernel:
