@@ -9,6 +9,17 @@ import plotly
 import plotly.express as px
 import pytorch_lightning as pl
 import torch
+from botorch import fit_gpytorch_mll, fit_gpytorch_model
+from botorch.acquisition import (
+    ExpectedImprovement,
+    NoisyExpectedImprovement,
+    UpperConfidenceBound,
+)
+from gpytorch import ExactMarginalLogLikelihood
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
+from sklearn.manifold import TSNE
+from torchmetrics import MeanAbsoluteError, MeanSquaredError, R2Score
+
 import wandb
 from additive_bo.data.utils import torch_delete_rows
 from additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel import (
@@ -22,19 +33,6 @@ from additive_bo.surrogate_models.gp import (
     HeteroskedasticGP,
     MostLikelyHeteroskedasticGP,
 )
-from botorch import fit_gpytorch_mll, fit_gpytorch_model
-from botorch.acquisition import (
-    ExpectedImprovement,
-    NoisyExpectedImprovement,
-    UpperConfidenceBound,
-)
-from gpytorch import ExactMarginalLogLikelihood
-from pytorch_lightning.utilities.types import (
-    EVAL_DATALOADERS,
-    TRAIN_DATALOADERS,
-)
-from sklearn.manifold import TSNE
-from torchmetrics import MeanAbsoluteError, MeanSquaredError, R2Score
 
 
 class BoModule(pl.LightningModule):
@@ -274,7 +272,9 @@ class BoModule(pl.LightningModule):
             ),  # self.trainer.datamodule.
         )
         with torch.no_grad():
-            self.optimize_acqf_and_get_observation(heldout_x, heldout_y)
+            self.suggestion = self.optimize_acqf_and_get_observation(
+                heldout_x, heldout_y
+            )
 
         # if self.beta_annealing:
         if self.current_epoch < self.beta_annealing:
@@ -284,6 +284,9 @@ class BoModule(pl.LightningModule):
         # else: self.beta = 0.1
 
         self.log("beta", self.beta)
+
+    def gimme_suggestion(self):
+        return self.suggestion
 
     def validation_step(self, batch, *args, **kwargs):
         if self.acquisition_class != "random":
@@ -391,7 +394,7 @@ class BoModule(pl.LightningModule):
                 beta=self.beta,
             )
 
-    def optimize_acquisition(self, heldout_x, batch_size=4):
+    def optimize_acquisition(self, heldout_x, batch_size=1):
         acq_vals = self.acquisition(heldout_x.unsqueeze(-2))
         best_idxs = torch.argsort(acq_vals, descending=True)[:batch_size]
         self.log("sum_acq_values", acq_vals.sum())
@@ -449,9 +452,9 @@ class BoModule(pl.LightningModule):
         # new_y = heldout_y[best_idxs]  # .unsqueeze(-1)  # add output dimension
         print("ADDITIVE", additive)
         # self.data.train_indexes.append(best_idx)  # self.trainer.datamodule
-        print(self.data.heldout_indexes[best_idxs], "wtf")
+        global_idxs = self.data.heldout_indexes[best_idxs]  # , "wtf")
 
-        self.data.train_indexes.extend([self.data.heldout_indexes[best_idxs]])
+        self.data.train_indexes.extend([global_idxs])
 
         # for i, n in enumerate(self.top_n):
         #     if new_y >= self.data.get_nth_largest_yield(n):  # self.trainer.datamodule
@@ -465,7 +468,10 @@ class BoModule(pl.LightningModule):
 
         # update heldout set points
         # delete the selected input and value from the heldout set.
-        self.data.heldout_indexes = set(self.data.heldout_indexes) - set(best_idxs)
+        self.data.heldout_indexes = list(
+            set(self.data.heldout_indexes) - set([global_idxs])
+        )
+
         # self.data.heldout_x = torch_delete_rows(self.data.heldout_x, best_idxs)
         # self.data.heldout_y = torch_delete_rows(self.data.heldout_y, best_idxs)
 
