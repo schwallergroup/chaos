@@ -2,7 +2,6 @@ import random
 
 import numpy as np
 import torch
-from additive_bo.data.utils import torch_delete_rows
 from pyDOE import lhs
 from rdkit.ML.Cluster.Butina import ClusterData
 from scipy.spatial.distance import cdist
@@ -14,6 +13,8 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import pairwise_distances
 from sklearn_extra.cluster import KMedoids
 from sobol_seq import i4_sobol_generate
+
+from additive_bo.data.utils import torch_delete_rows
 
 
 def get_original_index(row, x):
@@ -393,8 +394,8 @@ class BOInitDataSelection:
                 row, x
             )  # np.where((x.numpy() == row).all(axis=1))[0]
             init_reactions_indexes.append(orig_index)
-        print(init_indices_from_clusters, " indices before ")
-        print(init_reactions_indexes, "indices after")
+        # print(init_indices_from_clusters, " indices before ")
+        # print(init_reactions_indexes, "indices after")
         self.selected_reactions = init_reactions_indexes
         return init_reactions_indexes, clusters
 

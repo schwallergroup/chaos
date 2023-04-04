@@ -100,9 +100,7 @@ class BoModule(pl.LightningModule):
         top_nth_yield = self.data.get_nth_largest_yield(n=n)  # self.trainer.datamodule.
         mask = (
             torch.stack(
-                self.data.additives_reactions["y"]
-                .iloc[self.data.train_indexes]
-                .tolist()
+                self.data.design_space["y"].iloc[self.data.train_indexes].tolist()
             )
             >= top_nth_yield
         )  # self.trainer.datamodule.
@@ -127,9 +125,7 @@ class BoModule(pl.LightningModule):
         with torch.no_grad():
             posterior_train = self.mll.model.posterior(
                 torch.stack(
-                    self.data.additives_reactions["x"]
-                    .iloc[self.data.train_indexes]
-                    .tolist()
+                    self.data.design_space["x"].iloc[self.data.train_indexes].tolist()
                 ),
                 observation_noise=True,  # self.trainer.datamodule.
             )
@@ -160,9 +156,7 @@ class BoModule(pl.LightningModule):
             )
             axes.scatter(
                 torch.stack(
-                    self.data.additives_reactions["y"]
-                    .iloc[self.data.train_indexes]
-                    .tolist()
+                    self.data.design_space["y"].iloc[self.data.train_indexes].tolist()
                 ).squeeze(),
                 mean_train.squeeze(),
                 color="red",  # self.trainer.datamodule.
@@ -184,14 +178,10 @@ class BoModule(pl.LightningModule):
         # with torch.no_grad():
         train_x, train_y = (
             torch.stack(
-                self.data.additives_reactions["x"]
-                .iloc[self.data.train_indexes]
-                .tolist()
+                self.data.design_space["x"].iloc[self.data.train_indexes].tolist()
             ),  # self.trainer.datamodule
             torch.stack(
-                self.data.additives_reactions["y"]
-                .iloc[self.data.train_indexes]
-                .tolist()
+                self.data.design_space["y"].iloc[self.data.train_indexes].tolist()
             ),  # self.data.train_y,  # self.trainer.datamodule
         )
         self.log("train/best_so_far", torch.max(train_y))
@@ -261,14 +251,10 @@ class BoModule(pl.LightningModule):
 
         heldout_x, heldout_y = (
             torch.stack(
-                self.data.additives_reactions["x"]
-                .iloc[self.data.heldout_indexes]
-                .tolist()
+                self.data.design_space["x"].iloc[self.data.heldout_indexes].tolist()
             ),  # self.trainer.datamodule.
             torch.stack(
-                self.data.additives_reactions["y"]
-                .iloc[self.data.heldout_indexes]
-                .tolist()
+                self.data.design_space["y"].iloc[self.data.heldout_indexes].tolist()
             ),  # self.trainer.datamodule.
         )
         with torch.no_grad():
@@ -371,9 +357,7 @@ class BoModule(pl.LightningModule):
             self.acquisition = ExpectedImprovement(
                 model=self.model,
                 best_f=torch.stack(
-                    self.data.additives_reactions["y"]
-                    .iloc[self.data.train_indexes]
-                    .tolist()
+                    self.data.design_space["y"].iloc[self.data.train_indexes].tolist()
                 ).max(),  # self.trainer.datamodule
             )
 
@@ -381,9 +365,7 @@ class BoModule(pl.LightningModule):
             self.acquisition = NoisyExpectedImprovement(
                 model=self.model,
                 X_observed=torch.stack(
-                    self.data.additives_reactions["x"]
-                    .iloc[self.data.train_indexes]
-                    .tolist()
+                    self.data.design_space["x"].iloc[self.data.train_indexes].tolist()
                 ),  # self.trainer.datamodule
                 num_fantasies=100,
             )
@@ -446,11 +428,13 @@ class BoModule(pl.LightningModule):
         # new_x = heldout_x[best_idxs]  # .unsqueeze(-2)  # add batch dimension
 
         print(best_idxs, "best idxes")
-        additive = self.data.additives_reactions["Additive_Smiles"][
-            self.data.heldout_indexes[best_idxs]
-        ]
+        selected_rows = self.data.heldout_indexes[best_idxs]
+        additive = self.data.design_space.loc[selected_rows, self.data.conditions]
+        print(f"Suggestion: {additive}")
+        # additive = self.data.design_space[self.data.conditions][
+        #     self.data.heldout_indexes[best_idxs]
+        # ]
         # new_y = heldout_y[best_idxs]  # .unsqueeze(-1)  # add output dimension
-        print("ADDITIVE", additive)
         # self.data.train_indexes.append(best_idx)  # self.trainer.datamodule
         global_idxs = self.data.heldout_indexes[best_idxs]  # , "wtf")
 

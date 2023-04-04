@@ -7,22 +7,20 @@ import pandas as pd
 import plotly.express as px
 import pytorch_lightning as pl
 import torch
-from additive_bo.data.dataset import DynamicSet, SingleSampleDataset
-from additive_bo.data.reduction.vae import VAE, train_vae
-from additive_bo.data.utils import torch_delete_rows
-from additive_bo.data_init_selection.clustering import BOInitDataSelection
-from additive_bo.gprotorch.dataloader import DataLoaderMP, ReactionLoader
 from botorch.models.transforms.input import Normalize
 from matplotlib import pyplot as plt
-from pytorch_lightning.utilities.types import (
-    EVAL_DATALOADERS,
-    TRAIN_DATALOADERS,
-)
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from scipy import stats
 from scipy.stats import sem
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from torch.utils.data import DataLoader
+
+from additive_bo.data.dataset import DynamicSet, SingleSampleDataset
+from additive_bo.data.reduction.vae import VAE, train_vae
+from additive_bo.data.utils import torch_delete_rows
+from additive_bo.data_init_selection.clustering import BOInitDataSelection
+from additive_bo.gprotorch.dataloader import DataLoaderMP, ReactionLoader
 
 
 class BOAdditivesDataModule(pl.LightningDataModule):
@@ -55,7 +53,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         self.heldout_y: torch.tensor = None
         self.train_x: torch.tensor = None
         self.train_y: torch.tensor = None
-        self.additives_reactions: pd.DataFrame = None
+        self.design_space: pd.DataFrame = None
         # self.experiments_history: pd.DataFrame = None
         self.base_reactions: pd.DataFrame = None
 
@@ -74,6 +72,8 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         self.reduction_size = reduction_size
         self.transform_output = transform_output
 
+        self.conditions = [self.featurize_column]
+
         self.save_hyperparameters()
         self.setup()
 
@@ -84,7 +84,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
 
         # todo do I need to scale by base reaction
         if self.scale_by_baseline:
-            self.additives_reactions = (
+            self.design_space = (
                 reaction_data[
                     ["reaction_smiles", "Additive_Smiles", "UV210_Prod AreaAbs"]
                 ]
@@ -101,7 +101,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             )
 
         else:
-            self.additives_reactions = (
+            self.design_space = (
                 reaction_data[
                     ["reaction_smiles", "Additive_Smiles", "UV210_Prod AreaAbs"]
                 ]
@@ -121,19 +121,17 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             self.noise = self.base_reactions.std()
 
     def remove_nan_rows(self):
-        mask = torch.isnan(torch.stack(self.additives_reactions["x"].tolist())).any(
-            dim=1
-        )
+        mask = torch.isnan(torch.stack(self.design_space["x"].tolist())).any(dim=1)
         indices_to_delete = mask.nonzero().flatten().tolist()
         # self.x = torch_delete_rows(self.x, indices_to_delete)
         # self.y = torch_delete_rows(self.y, indices_to_delete)
-        self.additives_reactions = self.additives_reactions.drop(
-            index=indices_to_delete
-        ).reset_index(drop=True)
+        self.design_space = self.design_space.drop(index=indices_to_delete).reset_index(
+            drop=True
+        )
 
     def remove_duplicates(self):
         __, inv, counts = torch.unique(
-            torch.stack(self.additives_reactions["x"].tolist()),
+            torch.stack(self.design_space["x"].tolist()),
             return_inverse=True,
             return_counts=True,
             dim=0,
@@ -149,7 +147,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             indices_to_delete = list(chain(*[x[1:] for x in duplicates]))
             # self.x = torch_delete_rows(self.x, indices_to_delete)
             # self.y = torch_delete_rows(self.y, indices_to_delete)
-            self.additives_reactions = self.additives_reactions.drop(
+            self.design_space = self.design_space.drop(
                 index=indices_to_delete
             ).reset_index(drop=True)
 
@@ -161,9 +159,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         if self.representation in ["drfpfingerprints", "drfpfragprints"]:
             additive_representation = self.representation.replace("drfp", "")
             additive_loader = DataLoaderMP()
-            additive_loader.features = self.additives_reactions[
-                "Additive_Smiles"
-            ].to_list()
+            additive_loader.features = self.design_space["Additive_Smiles"].to_list()
             additive_loader.featurize(
                 additive_representation,
                 bond_radius=self.bond_radius,
@@ -171,11 +167,9 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             )
 
             reaction_loader = ReactionLoader()
-            reaction_loader.features = self.additives_reactions["reaction_smiles"]
+            reaction_loader.features = self.design_space["reaction_smiles"]
             reaction_loader.featurize("drfp", nBits=self.feature_dimension)
-            reaction_loader.labels = self.additives_reactions[
-                "UV210_Prod AreaAbs"
-            ].to_numpy()
+            reaction_loader.labels = self.design_space["UV210_Prod AreaAbs"].to_numpy()
 
             x = np.concatenate(
                 [reaction_loader.features, additive_loader.features], axis=1
@@ -184,7 +178,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
 
         elif self.featurize_column == "Additive_Smiles":
             loader = DataLoaderMP()
-            loader.features = self.additives_reactions["Additive_Smiles"].to_list()
+            loader.features = self.design_space["Additive_Smiles"].to_list()
 
             loader.featurize(
                 self.representation,
@@ -192,20 +186,20 @@ class BOAdditivesDataModule(pl.LightningDataModule):
                 nBits=self.feature_dimension,
             )
 
-            loader.labels = self.additives_reactions["UV210_Prod AreaAbs"].to_numpy()
+            loader.labels = self.design_space["UV210_Prod AreaAbs"].to_numpy()
 
             x = loader.features
             y = loader.labels
 
         elif self.featurize_column == "reaction_smiles":
             loader = ReactionLoader()
-            loader.features = self.additives_reactions["reaction_smiles"]
+            loader.features = self.design_space["reaction_smiles"]
             loader.featurize(
                 self.representation,
                 nBits=self.feature_dimension,
                 bond_radius=self.bond_radius,
             )
-            loader.labels = self.additives_reactions["UV210_Prod AreaAbs"].to_numpy()
+            loader.labels = self.design_space["UV210_Prod AreaAbs"].to_numpy()
 
             x = loader.features
             y = loader.labels
@@ -219,15 +213,15 @@ class BOAdditivesDataModule(pl.LightningDataModule):
 
         # y = y + 1e-1
 
-        self.additives_reactions["UV210_Prod AreaAbs"] = y
+        self.design_space["UV210_Prod AreaAbs"] = y
 
         y = y.reshape(-1, 1)
 
         x = torch.from_numpy(x).to(torch.float64)  # .to('cuda')
         y = torch.from_numpy(y).to(torch.float64)  # .to('cuda')
 
-        self.additives_reactions["x"] = [row for row in x]
-        self.additives_reactions["y"] = [row for row in y]
+        self.design_space["x"] = [row for row in x]
+        self.design_space["y"] = [row for row in y]
 
     def featurize_x(self, x):
         loader = DataLoaderMP()
@@ -243,10 +237,8 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         return torch.from_numpy(x).to(torch.float64)
 
     def get_baseline_reaction(self):
-        return self.additives_reactions[
-            self.additives_reactions[self.featurize_column].str.contains(
-                self.base_additive
-            )
+        return self.design_space[
+            self.design_space[self.featurize_column].str.contains(self.base_additive)
         ].index.tolist()
 
     def reduce_dimensionality(self, data, reduction_technique=None):
@@ -299,12 +291,12 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         # data_for_clustering = self.reduce_dimensionality(self.x, reduction_technique=self.dim_reduction)
 
         baseline_reaction_index = self.get_baseline_reaction()
-        print(baseline_reaction_index, "baseline reaction index")
+        # print(baseline_reaction_index, "baseline reaction index")
         high_yield_rxn_indexes = self.get_n_largest_yield_reactions(
             n=self.exclude_n_largest
         )
         init_indexes, clusters = self.init_selection_method.fit(
-            torch.stack(self.additives_reactions["x"].tolist()),
+            torch.stack(self.design_space["x"].tolist()),
             exclude=baseline_reaction_index + high_yield_rxn_indexes,
         )
         # init_indexes, clusters = self.init_selection_method.fit(
@@ -316,7 +308,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         print(f"Selected reactions: {init_indexes}")
         # train_indexes = [baseline_reaction_index] + init_indexes
         self.clusters = clusters
-        all_indexes_set = set(self.additives_reactions.index)
+        all_indexes_set = set(self.design_space.index)
         self.train_indexes = init_indexes
 
         # self.train_x = self.x[init_indexes]  # init_indexes
@@ -334,10 +326,10 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         )
 
         self.train_x = torch.stack(
-            self.additives_reactions.iloc[self.train_indexes]["x"].tolist()
+            self.design_space.iloc[self.train_indexes]["x"].tolist()
         )
         self.heldout_x = torch.stack(
-            self.additives_reactions.iloc[self.heldout_indexes]["x"].tolist()
+            self.design_space.iloc[self.heldout_indexes]["x"].tolist()
         )
 
         # print(self.trainer, "SELF TRAINER JEBEM TI MATER")
@@ -352,9 +344,7 @@ class BOAdditivesDataModule(pl.LightningDataModule):
         # self.heldout_x = self.heldout_x[shuffle_indices]
         # self.heldout_y = self.heldout_y[shuffle_indices]
 
-        self.objective_optimum = torch.max(
-            torch.stack(self.additives_reactions["y"].tolist())
-        )
+        self.objective_optimum = torch.max(torch.stack(self.design_space["y"].tolist()))
 
     def plot_latent_space(self, method="pca"):
         # fig = plt.figure()
@@ -470,32 +460,24 @@ class BOAdditivesDataModule(pl.LightningDataModule):
 
     def get_n_largest_yield_reactions(self, n=10):
         high_yield_mol_indexes = (
-            self.additives_reactions["UV210_Prod AreaAbs"].nlargest(n=n).index.tolist()
+            self.design_space["UV210_Prod AreaAbs"].nlargest(n=n).index.tolist()
         )
         return high_yield_mol_indexes
 
     def get_nth_largest_yield(self, n=10):
-        return self.additives_reactions["UV210_Prod AreaAbs"].nlargest(n=n).iloc[-1]
+        return self.design_space["UV210_Prod AreaAbs"].nlargest(n=n).iloc[-1]
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         train_dataset = SingleSampleDataset(
-            torch.stack(
-                self.additives_reactions["x"].iloc[self.train_indexes].tolist()
-            ),
-            torch.stack(
-                self.additives_reactions["y"].iloc[self.train_indexes].tolist()
-            ),
+            torch.stack(self.design_space["x"].iloc[self.train_indexes].tolist()),
+            torch.stack(self.design_space["y"].iloc[self.train_indexes].tolist()),
         )
         return DataLoader(train_dataset, num_workers=4)
 
     def val_dataloader(self) -> EVAL_DATALOADERS:
         valid_dataset = SingleSampleDataset(
-            torch.stack(
-                self.additives_reactions["x"].iloc[self.heldout_indexes].tolist()
-            ),
-            torch.stack(
-                self.additives_reactions["y"].iloc[self.train_indexes].tolist()
-            ),
+            torch.stack(self.design_space["x"].iloc[self.heldout_indexes].tolist()),
+            torch.stack(self.design_space["y"].iloc[self.train_indexes].tolist()),
         )
         return DataLoader(valid_dataset, num_workers=4)
 
@@ -519,14 +501,13 @@ class HTEDataModule(pl.LightningDataModule):
     ):
         super().__init__()
         self.objective_optimum: int = None
-        self.x: torch.tensor = None
-        self.y: torch.tensor = None
-        self.heldout_x: torch.tensor = None
-        self.heldout_y: torch.tensor = None
-        self.train_x: torch.tensor = None
-        self.train_y: torch.tensor = None
-        self.additives_reactions: pd.DataFrame = None
-        self.base_reactions: pd.DataFrame = None
+        # self.x: torch.tensor = None
+        # self.y: torch.tensor = None
+        # self.heldout_x: torch.tensor = None
+        # self.heldout_y: torch.tensor = None
+        # self.train_x: torch.tensor = None
+        # self.train_y: torch.tensor = None
+        self.design_space: pd.DataFrame = pd.read_csv(data_path)
         self.dataset = dataset
         self.data_path = data_path
         self.representation = representation
@@ -540,6 +521,18 @@ class HTEDataModule(pl.LightningDataModule):
         assert (
             (dataset == "DreherDoyle") & (data_path.find("dreher_doyle") != -1)
         ) or ((dataset == "SuzukiMiyaura") & (data_path.find("suzuki_miyaura") != -1))
+
+        if dataset == "DreherDoyle":
+            self.conditions = ["ligand", "additive", "base", "aryl halide"]
+        elif dataset == "SuzukiMiyaura":
+            self.conditions = [
+                "reactant_1_smiles",
+                "reactant_2_smiles",
+                "catalyst_smiles",
+                "ligand_smiles",
+                "reagent_1_smiles",
+                "solvent_1_smiles",
+            ]
 
         self.save_hyperparameters()
         self.setup()
@@ -566,8 +559,11 @@ class HTEDataModule(pl.LightningDataModule):
         x = loader.features
         y = loader.labels.reshape(-1, 1)
 
-        self.x = torch.from_numpy(x).to(torch.float64)
-        self.y = torch.from_numpy(y).to(torch.float64)
+        x = torch.from_numpy(x).to(torch.float64)
+        y = torch.from_numpy(y).to(torch.float64)
+
+        self.design_space["x"] = [row for row in x]
+        self.design_space["y"] = [row for row in y]
 
     def train_test_split(self, init_indexes, baseline_reaction_index):
         self.train_indexes = init_indexes
@@ -583,29 +579,48 @@ class HTEDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         self.featurize()
-        init_indexes, clusters = self.init_selection_method.fit(self.x, exclude=[])
+        init_indexes, clusters = self.init_selection_method.fit(
+            torch.stack(self.design_space["x"].tolist()), exclude=[]
+        )
 
         print(f"Selected reactions: {init_indexes}")
         self.clusters = clusters
         self.train_indexes = init_indexes
-        self.train_x = self.x[init_indexes]
-        self.train_y = self.y[init_indexes]
+        all_indexes_set = set(self.design_space.index)
 
-        self.heldout_x = torch_delete_rows(self.x, init_indexes)
-        self.heldout_y = torch_delete_rows(self.y, init_indexes)
+        self.heldout_indexes = list(all_indexes_set - set(self.train_indexes))
 
-        self.objective_optimum = torch.max(self.y)
+        self.train_x = torch.stack(
+            self.design_space.iloc[self.train_indexes]["x"].tolist()
+        )
+        self.heldout_x = torch.stack(
+            self.design_space.iloc[self.heldout_indexes]["x"].tolist()
+        )
+
+        # self.train_x = self.x[init_indexes]
+        # self.train_y = self.y[init_indexes]
+
+        # self.heldout_x = torch_delete_rows(self.x, init_indexes)
+        # self.heldout_y = torch_delete_rows(self.y, init_indexes)
+
+        self.objective_optimum = torch.max(torch.stack(self.design_space["y"].tolist()))
 
     def get_nth_largest_yield(self, n=10):
         data = pd.read_csv(self.data_path)
         return data["yield"].nlargest(n=n).iloc[-1]
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
-        train_dataset = SingleSampleDataset(self.train_x, self.train_y)
+        train_dataset = SingleSampleDataset(
+            torch.stack(self.design_space["x"].iloc[self.train_indexes].tolist()),
+            torch.stack(self.design_space["y"].iloc[self.train_indexes].tolist()),
+        )
         return DataLoader(train_dataset, num_workers=4)
 
     def val_dataloader(self) -> EVAL_DATALOADERS:
-        valid_dataset = SingleSampleDataset(self.heldout_x, self.heldout_y)
+        valid_dataset = SingleSampleDataset(
+            torch.stack(self.design_space["x"].iloc[self.heldout_indexes].tolist()),
+            torch.stack(self.design_space["y"].iloc[self.heldout_indexes].tolist()),
+        )
         return DataLoader(valid_dataset, num_workers=4)
 
     def transfer_batch_to_device(self, batch, device, dataloader_idx):
