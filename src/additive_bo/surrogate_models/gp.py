@@ -101,29 +101,6 @@ class GP(SingleTaskGP):
             gpytorch.constraints.Interval(-5.0, 5.0)
         )
 
-    def reinit(self, train_x, train_y):
-        """
-        Reinitialize the GP model with new training data.
-
-        Args:
-            train_x: New training inputs.
-            train_y: New training outputs.
-
-        Returns:
-            A new GP model initialized with the new training data.
-        """
-        return GP(
-            train_x,
-            train_y,
-            self.noise_val,
-            self.fix_noise,
-            self.kernel,
-            self.standardize,
-            self.normalize,
-            self.zero_mean,
-            self.input_warping,
-        )
-
     def initialize_mll(self, state_dict=None):
         """
         Initialise model and loss function.
@@ -147,7 +124,6 @@ class GP(SingleTaskGP):
             state_dict: current state dict used to speed up fitting
         """
         self.set_train_data(inputs=train_x, targets=train_y.view(-1), strict=False)
-        # self.reinit(train_x, train_y)
         mll = self.initialize_mll(state_dict)
         self.fit_with_retries(mll)
 
@@ -165,11 +141,3 @@ class GP(SingleTaskGP):
     def fit_mll(self, mll):
         with gpytorch.settings.fast_computations(covar_root_decomposition=False):
             fit_gpytorch_mll(mll, max_retries=50)
-
-
-# import torch
-# train_x = torch.rand(100,2)
-# train_y = torch.rand(100,1)
-# model = GP(train_x, train_y)
-
-# model.fit(train_x, train_y)
