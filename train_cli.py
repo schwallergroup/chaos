@@ -19,7 +19,8 @@ import wandb
 from additive_bo.bo.module import BoModule
 from additive_bo.data.module import BOAdditivesDataModule
 from additive_bo.data_init_selection.clustering import BOInitDataSelection
-from additive_bo.surrogate_models.gp import GP, FixedGP, HeteroskedasticGP  # noqa F401
+
+# from additive_bo.surrogate_models.gp import GP  # noqa F401
 from additive_bo.utils import flatten
 
 logging.getLogger("PIL").setLevel(logging.WARNING)
