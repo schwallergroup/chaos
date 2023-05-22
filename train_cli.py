@@ -67,6 +67,7 @@ class MyLightningCli(LightningCLI):
         parser.link_arguments(
             "kernel", "surrogate_model.init_args.kernel", apply_on="instantiate"
         )
+
         parser.link_arguments(
             "data.train_x", "surrogate_model.init_args.train_x", apply_on="instantiate"
         )
@@ -84,19 +85,17 @@ class MyLightningCli(LightningCLI):
         return super().add_arguments_to_parser(parser)
 
     def before_instantiate_classes(self) -> None:
-        # print("BEFORE ", self.config)
         return super().before_instantiate_classes()
 
 
 class WandbSaveConfigCallback(SaveConfigCallback):
     def __init__(self, parser, config, overwrite=True):
         super().__init__(parser, config, overwrite=overwrite)
-        # self.log_config = log_config
         print(self.config)
         self.parser = parser
         self.config = config
         wandb_config = flatten(dict(self.config))
-        wandb.config.update(wandb_config)  # , allow_val_change=True)
+        wandb.config.update(wandb_config)
 
 
 def reset_wandb_env():

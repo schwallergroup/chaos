@@ -1,5 +1,6 @@
 # from __future__ import annotations
 import gpytorch
+from botorch import fit_gpytorch_mll
 from botorch.models.gp_regression import MIN_INFERRED_NOISE_LEVEL, SingleTaskGP
 from botorch.models.transforms.input import Normalize, Warp
 from botorch.models.transforms.outcome import Standardize
@@ -130,7 +131,45 @@ class GP(SingleTaskGP):
         Args:
             state_dict: current state dict used to speed up fitting
         """
-        self.mll = ExactMarginalLogLikelihood(self.likelihood, self)
+        mll = ExactMarginalLogLikelihood(self.likelihood, self)
         # load state dict if it is passed
         if state_dict is not None:
-            self.load_state_dict(state_dict)
+            self.load_state_dict(state_dict, strict=False)
+        return mll
+
+    def fit(self, train_x, train_y, state_dict=None):
+        """
+        Initialize and fit the GP model with new training data.
+
+        Args:
+            train_x: New training inputs.
+            train_y: New training outputs.
+            state_dict: current state dict used to speed up fitting
+        """
+        self.set_train_data(inputs=train_x, targets=train_y.view(-1), strict=False)
+        # self.reinit(train_x, train_y)
+        mll = self.initialize_mll(state_dict)
+        self.fit_with_retries(mll)
+
+    def fit_with_retries(self, mll):
+        max_retries = 20
+        for i in range(max_retries):
+            try:
+                self.fit_mll(mll)
+                break
+            except RuntimeError as e:
+                if i == max_retries - 1:  # If we're on our last try
+                    raise e
+                print(f"Encountered error in optimization, retrying... (#{i + 1})")
+
+    def fit_mll(self, mll):
+        with gpytorch.settings.fast_computations(covar_root_decomposition=False):
+            fit_gpytorch_mll(mll, max_retries=50)
+
+
+# import torch
+# train_x = torch.rand(100,2)
+# train_y = torch.rand(100,1)
+# model = GP(train_x, train_y)
+
+# model.fit(train_x, train_y)
