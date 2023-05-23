@@ -18,7 +18,7 @@ from pytorch_lightning.loggers import WandbLogger
 import wandb
 from additive_bo.bo.module import BoModule
 from additive_bo.data.module import BOAdditivesDataModule
-from additive_bo.data_init_selection.clustering import BOInitDataSelection
+from additive_bo.initialization.initializers import BOInitializer
 
 # from additive_bo.surrogate_models.gp import GP  # noqa F401
 from additive_bo.utils import flatten
@@ -48,7 +48,7 @@ class MyLightningCli(LightningCLI):
         parser.add_argument("--n_iters", type=int, default=100)
         parser.add_argument("--n_trials", type=int, default=20)
 
-        parser.add_class_arguments(BOInitDataSelection, "data_selection")
+        parser.add_class_arguments(BOInitializer, "data_selection")
         parser.add_subclass_arguments(BaseModel, "surrogate_model")
         parser.add_subclass_arguments(gpytorch.kernels.Kernel, "kernel")
 
@@ -74,9 +74,9 @@ class MyLightningCli(LightningCLI):
         parser.link_arguments(
             "data.train_y", "surrogate_model.init_args.train_y", apply_on="instantiate"
         )
-        parser.link_arguments(
-            "data.noise", "surrogate_model.init_args.noise_val", apply_on="instantiate"
-        )
+        # parser.link_arguments(
+        #     "data.noise", "surrogate_model.init_args.noise_val", apply_on="instantiate"
+        # )
         parser.link_arguments("data", "model.data", apply_on="instantiate")
 
         parser.link_arguments("surrogate_model", "model.model", apply_on="instantiate")
