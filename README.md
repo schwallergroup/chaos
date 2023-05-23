@@ -59,7 +59,7 @@ This project uses [pre-commit](https://pre-commit.com/), please make sure to ins
 
 
 <p align="center">
-  <img src="https://github.com/schwallergroup/chaos/blob/refactoring/docs/_static/additive-pipeline.png" height="150">
+  <img src="./docs/_static/additive-pipeline.png" width="100%">
 </p>
 
 
