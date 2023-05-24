@@ -34,7 +34,7 @@ except ImportError:
     from sphinx import apidoc
 
 output_dir = os.path.join(__location__, "api")
-module_dir = os.path.join(__location__, "../src/additive_bo")
+module_dir = os.path.join(__location__, "../src/chaos")
 try:
     shutil.rmtree(output_dir)
 except FileNotFoundError:
@@ -99,7 +99,7 @@ copyright = "2023, Bojana"
 # If you don’t need the separation provided between version and release,
 # just set them both to the same value.
 try:
-    from additive_bo import __version__ as version
+    from chaos import __version__ as version
 except ImportError:
     version = ""
 

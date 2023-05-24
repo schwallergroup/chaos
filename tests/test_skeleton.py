@@ -1,6 +1,6 @@
 import pytest
 
-from additive_bo.skeleton import fib, main
+from chaos.skeleton import fib, main
 
 __author__ = "Bojana"
 __copyright__ = "Bojana"

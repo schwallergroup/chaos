@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from rdkit.Chem import MolFromSmiles
 
-from additive_bo.gprotorch.data_featuriser import (
+from chaos.gprotorch.data_featuriser import (
     bag_of_characters,
     cddd,
     chemberta_features,
@@ -16,7 +16,7 @@ from additive_bo.gprotorch.data_featuriser import (
     mqn_features,
     xtb,
 )
-from additive_bo.gprotorch.dataloader import DataLoader
+from chaos.gprotorch.dataloader import DataLoader
 
 
 class DataLoaderMP(DataLoader):

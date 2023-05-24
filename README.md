@@ -28,15 +28,17 @@ Buit on top of Gauche, it provides diverse compound and reaction representations
 To install the package we recommend using a conda environment:
 
 ```bash
-$ conda env create --file environment.yml
+$ conda env create --file environment.yaml
 pip install rxnfp --no-deps
 ```
 
 ## 💪 Getting Started
-
+To configure an optimization routine check the config.yaml file, update parameters and use:
 ```python
-
+python train_cli.py --config run_config.yaml
 ```
+To run a wandb sweep use the parameters from sweep_config.yaml and initialize to initialize the sweep.
+
 ## 👋 Contributing
 
 Contributions, whether filing an issue, making a pull request, or forking, are appreciated.

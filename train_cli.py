@@ -16,12 +16,12 @@ from pytorch_lightning.cli import (
 from pytorch_lightning.loggers import WandbLogger
 
 import wandb
-from additive_bo.bo.module import BoModule
-from additive_bo.data.module import BOAdditivesDataModule
-from additive_bo.initialization.initializers import BOInitializer
+from chaos.bo.module import BoModule
+from chaos.data.module import BOAdditivesDataModule
+from chaos.initialization.initializers import BOInitializer
 
-# from additive_bo.surrogate_models.gp import GP  # noqa F401
-from additive_bo.utils import flatten
+# from chaos.surrogate_models.gp import GP  # noqa F401
+from chaos.utils import flatten
 
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("PIL.PngImagePlugin").setLevel(logging.CRITICAL + 1)
@@ -37,7 +37,7 @@ def get_distance_metric(kernel):
     # if representation in ["drfp", "fingerprints", "fragprints"]:
     if (
         kernel
-        == "additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel"
+        == "chaos.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel"
     ):
         return "jaccard"
     return "euclidean"

@@ -1,0 +1,29 @@
+name: chaos
+channels:
+ - defaults
+ - conda-forge
+ - pytorch
+dependencies:
+ - python=3.8
+ - pip
+ - numpy
+ - pandas
+ - scipy
+ - pytorch
+ - scikit-learn
+ - scikit-learn-extra
+ - pre_commit
+ - pytorch-lightning
+ - wandb
+ - gpytorch
+ - matplotlib
+ - pip:
+    - -e .
+    - botorch
+    - selfies
+    - graphein==1.5.1
+    - torch-geometric==1.7.2
+    - rdkit
+    - drfp
+    - transformers
+    - jsonargparse[signatures]

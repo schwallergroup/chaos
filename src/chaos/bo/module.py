@@ -13,8 +13,8 @@ from botorch.acquisition.monte_carlo import qUpperConfidenceBound
 from botorch.sampling.normal import SobolQMCNormalSampler
 from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 
-from additive_bo.data.utils import torch_delete_rows
-from additive_bo.surrogate_models.gp import GP
+from chaos.data.utils import torch_delete_rows
+from chaos.surrogate_models.gp import GP
 
 
 class BoModule(pl.LightningModule):

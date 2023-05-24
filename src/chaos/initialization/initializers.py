@@ -102,22 +102,22 @@ class KMedoidsInitializer(Initializer):
 class BOInitializer:
     def __init__(
         self,
-        init_method: str = "true_random",
+        method: str = "kmedoids",
         metric: str = None,
         n_clusters: int = None,
+        init: str = "random",
     ):
         self.n_clusters = n_clusters
-        self.init_methods = {
+        self.methods = {
             "maxmin": MaxMinInitializer,
             "true_random": RandomInitializer,
             "kmeans": KMeansInitializer,
             "kmedoids": KMedoidsInitializer,
         }
-        if init_method not in self.init_methods:
-            raise ValueError(f"Unknown init_method: {init_method}")
-        print(init_method)
-        self.initializer = self.init_methods[init_method](
-            metric=metric, n_clusters=n_clusters
+        if method not in self.methods:
+            raise ValueError(f"Unknown init_method: {method}")
+        self.initializer = self.methods[method](
+            metric=metric, n_clusters=n_clusters, init_method=init
         )
         self.selected_reactions = None
 

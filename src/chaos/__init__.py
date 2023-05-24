@@ -2,7 +2,7 @@ import sys
 
 from .bo import *
 from .data import *
-from .data_init_selection import *
+from .initialization import *
 from .gprotorch import *
 from .surrogate_models import *
 

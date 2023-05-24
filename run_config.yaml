@@ -1,7 +1,6 @@
-# pytorch_lightning==1.8.6
-seed_everything: 7
+# pytorch_lightning==1.9.3
+seed_everything: 1
 trainer:
-  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f14b64b32b0>
   enable_checkpointing: true
   callbacks: null
   default_root_dir: null
@@ -11,7 +10,7 @@ trainer:
   num_processes: null
   devices: 1
   gpus: null
-  auto_select_gpus: false
+  auto_select_gpus: null
   tpu_cores: null
   ipus: null
   enable_progress_bar: true
@@ -46,7 +45,7 @@ trainer:
   detect_anomaly: false
   auto_scale_batch_size: false
   plugins: null
-  amp_backend: native
+  amp_backend: null
   amp_level: null
   move_metrics_to_cpu: false
   multiple_trainloader_mode: max_size_cycle
@@ -60,35 +59,30 @@ model:
   - 5
   - 10
   batch_size: 1
-  beta_annealing: 0
   finetuning: true
 data:
   data_path: data/additives_reactions.csv
-  reaction_plate: 2
-  base_additive: N#N
-  representation: drfpfragprints
-  feature_dimension: 512
+  reaction_plate: 1
   exclude_n_largest: 0
   scale_by_baseline: false
-  noise_calc: var
-  dim_reduction: null
-  reduction_size: 64
+  representation: fragprints
+  feature_dimension: 512
   bond_radius: 3
-  transform_output: null
 n_iters: 100
 n_trials: 20
 data_selection:
-  init_method: random
+  method: kmedoids
   metric: jaccard
   n_clusters: 10
-  seed: null
+  init: random
 kernel:
-  class_path: additive_bo.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel
+  class_path: chaos.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel
   init_args:
     metric: ''
 surrogate_model:
-  class_path: additive_bo.surrogate_models.gp.GP
+  class_path: chaos.surrogate_models.gp.GP
   init_args:
+    noise_val: 0.015
     fix_noise: false
     standardize: true
     normalize: false

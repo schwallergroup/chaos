@@ -14,11 +14,10 @@ from rxnfp.transformer_fingerprints import (
     get_default_model_and_tokenizer,
 )
 from sklearn.feature_extraction.text import CountVectorizer
-
-# Reactions
 from transformers import AutoModelWithLMHead, AutoTokenizer, BertModel
 
 
+# Reactions
 def one_hot(df):
     """
     Builds reaction representation as a bit vector which indicates whether

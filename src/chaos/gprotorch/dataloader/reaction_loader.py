@@ -1,6 +1,6 @@
 import pandas as pd
 
-from additive_bo.gprotorch.data_featuriser import (
+from chaos.gprotorch.data_featuriser import (
     bag_of_characters,
     drfp,
     drxnfp,
@@ -8,7 +8,7 @@ from additive_bo.gprotorch.data_featuriser import (
     rxnfp,
     rxnfp2,
 )
-from additive_bo.gprotorch.dataloader import DataLoader
+from chaos.gprotorch.dataloader import DataLoader
 
 
 class ReactionLoader(DataLoader):

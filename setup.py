@@ -11,9 +11,9 @@ from setuptools import find_packages, setup
 if __name__ == "__main__":
     try:
         setup(
-            name="additive_bo",
+            name="chaos",
             use_scm_version={"version_scheme": "no-guess-dev"},
-            packages=find_packages(include=["additive_bo", "gprotorch"]),
+            packages=find_packages(include=["chaos", "gprotorch"]),
         )
 
     except:  # noqa
