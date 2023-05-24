@@ -37,7 +37,7 @@ To configure an optimization routine check the config.yaml file, update paramete
 ```python
 python train_cli.py --config run_config.yaml
 ```
-To run a wandb sweep use the parameters from sweep_config.yaml and initialize to initialize the sweep.
+To run a wandb sweep use the parameters from sweep_config.yaml to initialize the sweep.
 
 ## 👋 Contributing
 
