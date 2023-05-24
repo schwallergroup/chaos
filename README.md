@@ -11,7 +11,7 @@ please update the URLs accordingly -->
 
 ---
 
-# CHAOS: Chemical additives optimization screening
+# CHAOS: **CH**emical **A**dditives **O**ptimization **S**creening
 
 **chaos** leverages Bayesian optimization to optimize additives for chemical reactions.
 
