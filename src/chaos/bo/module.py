@@ -110,8 +110,8 @@ class BoModule(pl.LightningModule):
     def optimize_acquisition(self, heldout_x, batch_size=4):
         acq_vals = self.acquisition(heldout_x.unsqueeze(-2))
         best_idxs = torch.argsort(acq_vals, descending=True)[:batch_size]
-        self.log("sum_acq_values", acq_vals.sum())
-        self.log("suggestion_idx", best_idxs[0])
+        #self.log("sum_acq_values", acq_vals.sum())
+        #self.log("suggestion_idx", best_idxs[0])
 
         return best_idxs
 
