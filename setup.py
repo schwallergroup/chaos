@@ -14,6 +14,22 @@ if __name__ == "__main__":
             name="chaos",
             use_scm_version={"version_scheme": "no-guess-dev"},
             packages=find_packages(include=["chaos", "gprotorch"]),
+            install_requires=[
+                "rdkit",
+                "pandas",
+                "nest_asyncio",
+                "selfies",
+                "drfp",
+                "torch",
+                "rxnfp",
+                "gpytorch",
+                "lightning",
+                "botorch",
+                "scikit-learn-extra",
+                "wandb",
+                "matplotlib==3.2.2",
+                "scipy==1.4.1"
+            ],
         )
 
     except:  # noqa
