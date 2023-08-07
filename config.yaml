@@ -1,0 +1,97 @@
+# pytorch_lightning==1.9.3
+seed_everything: 11
+trainer:
+  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f42807b61f0>
+  enable_checkpointing: true
+  callbacks: null
+  default_root_dir: null
+  gradient_clip_val: null
+  gradient_clip_algorithm: null
+  num_nodes: 1
+  num_processes: null
+  devices: 1
+  gpus: null
+  auto_select_gpus: null
+  tpu_cores: null
+  ipus: null
+  enable_progress_bar: true
+  overfit_batches: 0.0
+  track_grad_norm: -1
+  check_val_every_n_epoch: 1
+  fast_dev_run: false
+  accumulate_grad_batches: null
+  min_epochs: 1
+  max_steps: -1
+  min_steps: null
+  max_time: null
+  limit_train_batches: null
+  limit_val_batches: null
+  limit_test_batches: null
+  limit_predict_batches: null
+  val_check_interval: null
+  log_every_n_steps: 1
+  accelerator: cpu
+  strategy: null
+  sync_batchnorm: false
+  precision: 32
+  enable_model_summary: true
+  num_sanity_val_steps: 0
+  resume_from_checkpoint: null
+  profiler: null
+  benchmark: null
+  deterministic: null
+  reload_dataloaders_every_n_epochs: 0
+  auto_lr_find: false
+  replace_sampler_ddp: true
+  detect_anomaly: false
+  auto_scale_batch_size: false
+  plugins: null
+  amp_backend: null
+  amp_level: null
+  move_metrics_to_cpu: false
+  multiple_trainloader_mode: max_size_cycle
+  inference_mode: true
+model:
+  acquisition_class: ucb
+  beta: 0.1
+  top_n:
+  - 1
+  - 3
+  - 5
+  - 10
+  batch_size: 1
+  finetuning: true
+data:
+  data_path: data/additives_reactions.csv
+  reaction_plate: 1
+  exclude_n_largest: 0
+  scale_by_baseline: false
+  representation: fragprints
+  feature_dimension: 512
+  bond_radius: 3
+n_iters: 100
+n_trials: 20
+data_selection:
+  method: kmedoids
+  metric: jaccard
+  n_clusters: 10
+  init: random
+kernel:
+  class_path: chaos.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel
+  init_args:
+    metric: ''
+    ard_num_dims: null
+    batch_shape: null
+    active_dims: null
+    lengthscale_prior: null
+    lengthscale_constraint: null
+    eps: 1.0e-06
+surrogate_model:
+  class_path: chaos.surrogate_models.gp.GP
+  init_args:
+    noise_val: 0.015
+    fix_noise: false
+    standardize: true
+    normalize: false
+    zero_mean: false
+    input_warping: false

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 
 import gpytorch
 import pytorch_lightning as pl
@@ -14,14 +14,70 @@ from botorch.sampling.normal import SobolQMCNormalSampler
 from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 
 from chaos.data.utils import torch_delete_rows
-from chaos.surrogate_models.gp import GP
+from chaos.surrogate_models.gp import GP, SurrogateModel, SimpleGP
+import importlib
+from torch import Tensor
+
+
+def instantiate_class(input_dict, *args, **kwargs):
+    class_path = input_dict["class_path"]
+    init_args = input_dict.get("init_args", {})
+    init_args.update(kwargs)  # merge extra arguments into init_args
+
+    # Iterate over init_args, checking if any values are themselves classes to be instantiated
+    for arg_name, arg_value in init_args.items():
+        if isinstance(arg_value, dict) and "class_path" in arg_value:
+            init_args[arg_name] = instantiate_class(arg_value)
+
+    module_name, class_name = class_path.rsplit(".", 1)
+    MyClass = getattr(importlib.import_module(module_name), class_name)
+    instance = MyClass(*args, **init_args)  # passing extra arguments to the class
+
+    return instance
+
+
+gp_model_config = {
+    "class_path": "chaos.surrogate_models.gp.SimpleGP",
+    "init_args": {
+        "covar_module": {
+            "class_path": "gpytorch.kernels.ScaleKernel",
+            "init_args": {
+                "base_kernel": {
+                    "class_path": "chaos.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel",
+                    "init_args": {},
+                }
+            },
+        },
+        "likelihood": {
+            "class_path": "gpytorch.likelihoods.GaussianLikelihood",
+            "init_args": {"noise": 1e-4},
+        },
+        "initial_noise_val": 1e-4,
+    },
+}
+
+
+class LCB:
+    def __init__(self, model: SurrogateModel, beta: float, maximize: bool = True):
+        self.model = model
+        self.beta = beta
+        self.maximize = maximize
+
+    def __call__(self, X: Tensor) -> Tensor:
+        # self.beta = self.beta.to(X)
+        mean, std = self.model.predict(X)
+        # print(mean.shape, "mean")
+        if self.maximize:
+            return mean - self.beta * std
+        else:
+            return -(mean + self.beta * std)
 
 
 class BoModule(pl.LightningModule):
     def __init__(
         self,
         data: pl.LightningDataModule,
-        model: GP,
+        model: Union[GP, SimpleGP],
         acquisition_class: str = "ucb",
         beta: float = 0.1,
         top_n: List[int] = [1, 3, 5, 10],
@@ -39,6 +95,8 @@ class BoModule(pl.LightningModule):
         self.beta = beta
         self.batch_size = batch_size
 
+        self.prev_state = None
+
         self.save_hyperparameters(
             ignore=["kernel", "model", "mll", "data", "acquisition_class", "beta"]
         )
@@ -53,8 +111,22 @@ class BoModule(pl.LightningModule):
         self.log("train/best_so_far", torch.max(train_y))
 
         if self.acquisition_class != "random":
-            self.model.train()
-            self.train_surrogate(train_x, train_y)
+            # self.model.train()
+            # self.train_surrogate(train_x, train_y)
+
+            self.model = instantiate_class(
+                gp_model_config, train_x=train_x, train_y=train_y
+            )
+
+            if self.prev_state is not None:
+                self.model.load_state_dict(self.prev_state, strict=False)
+
+            self.model.fit(train_x, train_y)
+            self.prev_state = self.model.state_dict()
+            self.prev_state = {
+                k: v for k, v in self.prev_state.items() if "outcome_transform" not in k
+            }
+            self.prev_state = self.prev_state
             self.log_model_parameters()
 
         heldout_x, heldout_y = self.data.heldout_x, self.data.heldout_y
@@ -108,6 +180,7 @@ class BoModule(pl.LightningModule):
             self.acquisition = qUpperConfidenceBound(self.model, self.beta, sampler)
 
     def optimize_acquisition(self, heldout_x, batch_size=4):
+        self.model.eval()
         acq_vals = self.acquisition(heldout_x.unsqueeze(-2))
         best_idxs = torch.argsort(acq_vals, descending=True)[:batch_size]
         self.log("sum_acq_values", acq_vals.sum())
@@ -120,6 +193,9 @@ class BoModule(pl.LightningModule):
             best_idxs = torch.randperm(len(heldout_y))[: self.batch_size]
         else:
             self.construct_acquisition()
+            # ucb = LCB(self.model, 1.96)
+            # ucbs = ucb(heldout_x)
+            # best_idxs = [torch.argmax(ucbs).item()]
             best_idxs = self.optimize_acquisition(heldout_x, batch_size=self.batch_size)
         return heldout_x[best_idxs], heldout_y[best_idxs], best_idxs
 
