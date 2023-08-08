@@ -63,7 +63,7 @@ class SimpleGP(SurrogateModel, SingleTaskGP):
         covar_module: Union[Module, None] = None,
         mean_module: Union[Mean, None] = None,
         standardize: bool = True,
-        normalize: bool = True,
+        normalize: bool = False,
         initial_noise_val: float = 1e-5,
         noise_constraint: float = 1e-5,
         noise_val: float = 1e-5,

@@ -92,7 +92,7 @@ class KMedoidsInitializer(Initializer):
         kmedoids = KMedoids(
             n_clusters=self.n_clusters,
             init=self.init_method,
-            random_state=self.seed,
+            # random_state=self.seed,
             metric=self.metric,
             max_iter=5000,
         ).fit(x_init)
