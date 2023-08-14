@@ -38,10 +38,24 @@ from gpytorch.module import Module
 from gpytorch.priors import GammaPrior, LogNormalPrior
 from torch import Tensor
 from copy import deepcopy
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union, List
 import torch
 from botorch.settings import debug
 import numpy as np
+import chaos
+from gpytorch.kernels import AdditiveKernel
+
+
+class MyAdditiveKernel(AdditiveKernel):
+    def __init__(self, kernel_config: List):
+        kernels = []
+        for k_config in kernel_config:
+            class_path = k_config["class_path"]
+            init_args = k_config.get("init_args", {})
+            KernelClass = eval(class_path)
+            kernel = KernelClass(**init_args)
+            kernels.append(kernel)
+        super().__init__(*kernels)
 
 
 class SurrogateModel(ABC):
@@ -59,16 +73,15 @@ class SimpleGP(SurrogateModel, SingleTaskGP):
         self,
         train_x: Union[np.ndarray, torch.Tensor] = None,
         train_y: Union[np.ndarray, torch.Tensor] = None,
-        likelihood: Union[Likelihood, None] = None,
+        likelihood: Union[GaussianLikelihood, None] = None,
         covar_module: Union[Module, None] = None,
         mean_module: Union[Mean, None] = None,
         standardize: bool = True,
         normalize: bool = False,
-        initial_noise_val: float = 1e-5,
+        initial_noise_val: float = 1e-4,
         noise_constraint: float = 1e-5,
-        noise_val: float = 1e-5,
-        # outcome_transform: Union[OutcomeTransform, None] = None,
-        # input_transform: Union[InputTransform, None] = None,
+        initial_outputscale_val: float = 2.0,
+        initial_lengthscale_val: float = 0.5,
     ) -> None:
         super().__init__(
             train_x,
@@ -83,8 +96,34 @@ class SimpleGP(SurrogateModel, SingleTaskGP):
         self.likelihood.noise_covar.register_constraint(
             "raw_noise", GreaterThan(noise_constraint)
         )
-        self.likelihood.initialize(noise=initial_noise_val)
-        self.noise_val = noise_val
+
+        # self.likelihood.initialize(noise=initial_noise_val)
+
+        hypers = {
+            "likelihood.noise_covar.noise": torch.tensor(initial_noise_val),
+            "covar_module.base_kernel.lengthscale": torch.tensor(
+                initial_lengthscale_val
+            ),
+            "covar_module.outputscale": torch.tensor(initial_outputscale_val),
+        }
+
+        # Check existing parameters in the model
+        existing_parameters = {name for name, _ in self.named_parameters()}
+
+        # Only initialize parameters that exist in the model and have a non-None value
+        hypers_to_use = {
+            k: torch.tensor(v)
+            for k, v in hypers.items()
+            if k in existing_parameters and v is not None
+        }
+
+        # Apply the initialization
+        self.initialize(**hypers_to_use)
+
+        self.standardize = standardize
+        self.normalize = normalize
+        self.initial_noise_val = initial_noise_val
+        self.noise_constraint = noise_constraint
 
     def fit(self, train_X, train_Y):
         self.train()
@@ -100,6 +139,58 @@ class SimpleGP(SurrogateModel, SingleTaskGP):
 
     def predict(self, x, observation_noise=False, return_var=True):
         self.eval()  # set the model to evaluation mode
+        self.likelihood.eval()
+        with torch.no_grad():
+            posterior = self.posterior(x, observation_noise=observation_noise)
+        return (posterior.mean, posterior.variance) if return_var else posterior.mean
+
+
+from botorch.models import FixedNoiseGP
+from gpytorch.likelihoods import FixedNoiseGaussianLikelihood
+
+
+class MyFixedNoiseGP(SurrogateModel, FixedNoiseGP):
+    def __init__(
+        self,
+        train_x: Union[np.ndarray, torch.Tensor],
+        train_y: Union[np.ndarray, torch.Tensor],
+        train_yvar: Union[np.ndarray, torch.Tensor],
+        covar_module: Union[Module, None] = None,
+        mean_module: Union[Mean, None] = None,
+        standardize: bool = True,
+        normalize: bool = False,
+    ) -> None:
+        likelihood = FixedNoiseGaussianLikelihood(
+            noise=train_yvar, learn_additional_noise=False
+        )
+        super().__init__(
+            train_x=train_x,
+            train_y=train_y,
+            likelihood=likelihood,
+            covar_module=covar_module,
+            mean_module=mean_module,
+            outcome_transform=Standardize(train_y.shape[-1]) if standardize else None,
+            input_transform=Normalize(train_x.shape[-1]) if normalize else None,
+        )
+
+        self.standardize = standardize
+        self.normalize = normalize
+
+    def fit(self, x_train, y_train):
+        self.train()
+        self.likelihood.train()
+        mll = ExactMarginalLogLikelihood(self.likelihood, self)
+        mll.train()
+        try:
+            with debug(True):
+                fit_gpytorch_mll(mll)
+
+        except Exception as e:
+            print(f"Exception caught during fit: {str(e)}")
+
+    def predict(self, x, observation_noise=False, return_var=True):
+        self.eval()  # set the model to evaluation mode
+        self.likelihood.eval()
         with torch.no_grad():
             posterior = self.posterior(x, observation_noise=observation_noise)
         return (posterior.mean, posterior.variance) if return_var else posterior.mean
@@ -232,3 +323,22 @@ class GP(SingleTaskGP):
     def fit_mll(self, mll):
         with gpytorch.settings.fast_computations(covar_root_decomposition=False):
             fit_gpytorch_mll(mll, max_retries=50)
+
+    def fit(self, x_train, y_train):
+        self.train()
+        self.likelihood.train()
+        mll = ExactMarginalLogLikelihood(self.likelihood, self)
+        mll.train()
+        try:
+            with debug(True):
+                fit_gpytorch_mll(mll)
+
+        except Exception as e:
+            print(f"Exception caught during fit: {str(e)}")
+
+    def predict(self, x, observation_noise=False, return_var=True):
+        self.eval()  # set the model to evaluation mode
+        self.likelihood.eval()
+        with torch.no_grad():
+            posterior = self.posterior(x, observation_noise=observation_noise)
+        return (posterior.mean, posterior.variance) if return_var else posterior.mean

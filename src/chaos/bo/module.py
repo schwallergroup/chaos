@@ -1,9 +1,6 @@
 from typing import List, Union
-
-import gpytorch
 import pytorch_lightning as pl
 import torch
-from botorch import fit_gpytorch_mll
 from botorch.acquisition import (
     ExpectedImprovement,
     NoisyExpectedImprovement,
@@ -12,89 +9,46 @@ from botorch.acquisition import (
 from botorch.acquisition.monte_carlo import qUpperConfidenceBound
 from botorch.sampling.normal import SobolQMCNormalSampler
 from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
-
 from chaos.data.utils import torch_delete_rows
-from chaos.surrogate_models.gp import GP, SurrogateModel, SimpleGP
-import importlib
-from torch import Tensor
-
-
-def instantiate_class(input_dict, *args, **kwargs):
-    class_path = input_dict["class_path"]
-    init_args = input_dict.get("init_args", {})
-    init_args.update(kwargs)  # merge extra arguments into init_args
-
-    # Iterate over init_args, checking if any values are themselves classes to be instantiated
-    for arg_name, arg_value in init_args.items():
-        if isinstance(arg_value, dict) and "class_path" in arg_value:
-            init_args[arg_name] = instantiate_class(arg_value)
-
-    module_name, class_name = class_path.rsplit(".", 1)
-    MyClass = getattr(importlib.import_module(module_name), class_name)
-    instance = MyClass(*args, **init_args)  # passing extra arguments to the class
-
-    return instance
-
-
-gp_model_config = {
-    "class_path": "chaos.surrogate_models.gp.SimpleGP",
-    "init_args": {
-        "covar_module": {
-            "class_path": "gpytorch.kernels.ScaleKernel",
-            "init_args": {
-                "base_kernel": {
-                    "class_path": "chaos.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel",
-                    "init_args": {},
-                }
-            },
-        },
-        "likelihood": {
-            "class_path": "gpytorch.likelihoods.GaussianLikelihood",
-            "init_args": {"noise": 1e-4},
-        },
-        "initial_noise_val": 1e-4,
-    },
-}
-
-
-class LCB:
-    def __init__(self, model: SurrogateModel, beta: float, maximize: bool = True):
-        self.model = model
-        self.beta = beta
-        self.maximize = maximize
-
-    def __call__(self, X: Tensor) -> Tensor:
-        # self.beta = self.beta.to(X)
-        mean, std = self.model.predict(X)
-        # print(mean.shape, "mean")
-        if self.maximize:
-            return mean - self.beta * std
-        else:
-            return -(mean + self.beta * std)
+from chaos.plotting.bo_plotting import BOPlotter
+from chaos.utils import instantiate_class
+import wandb
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from chaos.gprotorch.metrics import (
+    negative_log_predictive_density,
+    mean_standardized_log_loss,
+    quantile_coverage_error,
+)
 
 
 class BoModule(pl.LightningModule):
     def __init__(
         self,
         data: pl.LightningDataModule,
-        model: Union[GP, SimpleGP],
+        model_config: dict = None,
         acquisition_class: str = "ucb",
         beta: float = 0.1,
         top_n: List[int] = [1, 3, 5, 10],
         batch_size: int = 1,
         finetuning: bool = True,
+        enable_plotting: bool = True,
+        enable_logging_images: bool = False,
     ):
         super().__init__()
         self.top_count = None
         self.data = data
-        self.model = model
+        self.model_config = model_config
         self.acquisition = None
         self.top_n = top_n
         self.finetuning = finetuning
         self.acquisition_class = acquisition_class
         self.beta = beta
         self.batch_size = batch_size
-
+        self.enable_plotting = enable_plotting
+        self.enable_logging_images = enable_logging_images
+        self.plotting_utils = BOPlotter() if enable_plotting else None
         self.prev_state = None
 
         self.save_hyperparameters(
@@ -102,8 +56,23 @@ class BoModule(pl.LightningModule):
         )
         self.automatic_optimization = False
 
-    def on_train_start(self) -> None:
-        self.prepare_logging_and_counters()
+    # def on_train_start(self) -> None:
+    #     self.prepare_logging_and_counters()
+
+    def log_diversity_metrics(self, data_matrix):
+        kernel_operator = self.model.covar_module(data_matrix)
+        kernel_matrix = kernel_operator.evaluate()
+        kernel_matrix = kernel_matrix.detach().cpu().numpy()
+        np.fill_diagonal(kernel_matrix, np.nan)
+
+        scaler = MinMaxScaler()
+
+        kernel_matrix_normalized = scaler.fit_transform(kernel_matrix)
+
+        # Compute the average similarity
+        avg_similarity = np.nanmean(kernel_matrix_normalized)
+
+        self.log("average_similarity", avg_similarity)
 
     # BO iteration
     def training_step(self, batch, batch_idx):
@@ -111,40 +80,98 @@ class BoModule(pl.LightningModule):
         self.log("train/best_so_far", torch.max(train_y))
 
         if self.acquisition_class != "random":
-            # self.model.train()
-            # self.train_surrogate(train_x, train_y)
-
             self.model = instantiate_class(
-                gp_model_config, train_x=train_x, train_y=train_y
+                self.model_config, train_x=train_x, train_y=train_y
             )
 
-            if self.prev_state is not None:
-                self.model.load_state_dict(self.prev_state, strict=False)
-
             self.model.fit(train_x, train_y)
-            self.prev_state = self.model.state_dict()
-            self.prev_state = {
-                k: v for k, v in self.prev_state.items() if "outcome_transform" not in k
-            }
-            self.prev_state = self.prev_state
-            self.log_model_parameters()
 
         heldout_x, heldout_y = self.data.heldout_x, self.data.heldout_y
         new_x, new_y, suggestion_ids = self.optimize_acqf_and_get_observation(
             heldout_x, heldout_y
         )
+        if self.enable_plotting:
+            if self.global_step % 100 == 0:
+                predictions_valid, var_valid = self.model.predict(
+                    heldout_x, observation_noise=True, return_var=True
+                )
+                predictions_train, var_train = self.model.predict(
+                    train_x, observation_noise=True, return_var=True
+                )
+                # print(var_valid.sqrt(), torch.sqrt(var_train), "variance")
+                if self.enable_logging_images:
+                    pred_vs_gt_fig = self.plotting_utils.plot_predicted_vs_actual(
+                        predictions_train,
+                        train_y,
+                        var_train.sqrt(),
+                        predictions_valid,
+                        heldout_y,
+                        var_valid.sqrt(),
+                    )
+                    residuals_figure = self.plotting_utils.plot_residuals(
+                        predictions_valid, heldout_y
+                    )
+                    self.logger.experiment.log(
+                        {"pred-vs-gt": wandb.Image(pred_vs_gt_fig)}
+                    )
+                    self.logger.experiment.log(
+                        {"residuals": wandb.Image(residuals_figure)}
+                    )
+
+                mse_valid = mean_squared_error(heldout_y, predictions_valid)
+                r2_valid = r2_score(heldout_y, predictions_valid)
+                mae_valid = mean_absolute_error(heldout_y, predictions_valid)
+
+                mse_train = mean_squared_error(train_y, predictions_train)
+                r2_train = r2_score(train_y, predictions_train)
+                mae_train = mean_absolute_error(train_y, predictions_train)
+
+                pred_dist_valid = self.model.posterior(
+                    heldout_x, observation_noise=True
+                )
+                pred_dist_train = self.model.posterior(train_x, observation_noise=True)
+
+                # Compute GP-specific uncertainty metrics
+                nlpd_valid = negative_log_predictive_density(pred_dist_valid, heldout_y)
+                msll_valid = mean_standardized_log_loss(pred_dist_valid, heldout_y)
+                qce_valid = quantile_coverage_error(pred_dist_valid, heldout_y)
+
+                nlpd_train = negative_log_predictive_density(pred_dist_train, train_y)
+                msll_train = mean_standardized_log_loss(pred_dist_train, train_y)
+                qce_train = quantile_coverage_error(pred_dist_train, train_y)
+
+                self.logger.experiment.log(
+                    {
+                        "train/mse": mse_train,
+                        "train/mae": mae_train,
+                        "train/r2": r2_train,
+                        "valid/mse": mse_valid,
+                        "valid/mae": mae_valid,
+                        "valid/r2": r2_valid,
+                        "train/nlpd": nlpd_train,
+                        "train/msll": msll_train,
+                        "train/qce": qce_train,
+                        "valid/nlpd": nlpd_valid,
+                        "valid/msll": msll_valid,
+                        "valid/qce": qce_valid,
+                    }
+                )
+
+                self.log_diversity_metrics(self.data.train_x)
+                self.log_model_parameters()
+
         self.update_data(new_x, new_y, suggestion_ids)
 
-    def train_surrogate(self, train_x, train_y):
-        prev_state = self.model.state_dict()
-        prev_state = {
-            k: v for k, v in prev_state.items() if "outcome_transform" not in k
-        }
-        prev_state = prev_state if self.finetuning else None
-        self.model.fit(train_x, train_y, state_dict=prev_state)
+    def on_train_start(self) -> None:
+        self.data.log_data_stats(self.logger)
 
     def on_train_end(self) -> None:
-        self.save_summary()
+        self.data.log_top_n_counts(self.logger)
+        self.data.log_quantile_counts(self.logger)
+        self.logger.experiment.finish()
+
+    # def on_train_end(self) -> None:
+    #     self.save_summary()
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         return self.data.train_dataloader()
@@ -193,20 +220,11 @@ class BoModule(pl.LightningModule):
             best_idxs = torch.randperm(len(heldout_y))[: self.batch_size]
         else:
             self.construct_acquisition()
-            # ucb = LCB(self.model, 1.96)
-            # ucbs = ucb(heldout_x)
-            # best_idxs = [torch.argmax(ucbs).item()]
             best_idxs = self.optimize_acquisition(heldout_x, batch_size=self.batch_size)
         return heldout_x[best_idxs], heldout_y[best_idxs], best_idxs
 
     def update_data(self, new_x, new_y, best_idxs):
         self.data.train_indexes.extend(best_idxs)
-
-        for i, n in enumerate(self.top_n):
-            for yi in new_y:
-                if yi >= self.data.get_nth_largest_yield(n):
-                    self.top_count[i] += 1
-
         self.log("train/suggestion", torch.max(new_y))
 
         # update heldout set points
@@ -217,37 +235,73 @@ class BoModule(pl.LightningModule):
         self.data.train_x = torch.cat([self.data.train_x, new_x])
         self.data.train_y = torch.cat([self.data.train_y, new_y])
 
-    def prepare_logging_and_counters(self):
-        self.logger.experiment.summary["global_optimum"] = self.data.objective_optimum
-        self.logger.experiment.config.update(
-            {"surrogate_model.init_args.noise_val": self.model.noise_val},
-            allow_val_change=True,
-        )
-        self.top_count = [self.count_top_n_in_init_data(n) for n in self.top_n]
-
-    def save_summary(self):
-        for i, top_n_count in enumerate(self.top_count):
-            self.logger.experiment.summary[f"top_{self.top_n[i]}_count"] = top_n_count
-        self.logger.experiment.finish()
-
     def log_model_parameters(self):
-        for param_name, param in self.model.named_parameters():
-            self.try_log(param_name, param)
+        for name, param in self.model.named_hyperparameters():
+            transformed_name = name.replace("raw_", "")
+            attr = self.model
+            for part in transformed_name.split("."):
+                attr = getattr(attr, part)
+            value = attr.cpu().detach().numpy()
 
-        try:
-            self.log(
-                "lengthscale", self.model.covar_module.base_kernel.lengthscale.squeeze()
-            )
-        except:
-            pass
+            self.logger.experiment.log({transformed_name: value})
 
-    def try_log(self, name, value):
-        try:
-            self.log(name, value.item())
-        except ValueError:
-            pass
+    # def log_model_parameters(self):
+    #     param_names = [name for name, _ in self.model.named_parameters()]
 
-    def count_top_n_in_init_data(self, n):
-        top_nth_yield = self.data.get_nth_largest_yield(n=n)
-        mask = self.data.train_y >= top_nth_yield
-        return sum(mask)
+    #     raw_transforms = {
+    #         "likelihood.noise_covar.raw_noise": "likelihood.noise",
+    #         "mean_module.raw_constant": "mean_module.constant",
+    #         "covar_module.raw_outputscale": "covar_module.outputscale",
+    #     }
+
+    #     for raw_name, log_name in raw_transforms.items():
+    #         if raw_name not in param_names:
+    #             continue
+
+    #         try:
+    #             attr = self.model
+    #             for part in log_name.split("."):
+    #                 attr = getattr(attr, part)
+
+    #             value = attr.cpu().detach().numpy()
+    #             self.logger.experiment.log({log_name: value})
+
+    #         except AttributeError:
+    #             # Handle the situation when the attribute doesn't exist
+    #             print(f"Attribute {log_name} doesn't exist in the model.")
+
+    #     if "covar_module.base_kernel.raw_lengthscale" in param_names:
+    #         self.logger.experiment.log(
+    #             {
+    #                 "covar_module.base_kernel.lengthscale_hist": wandb.Histogram(
+    #                     self.model.covar_module.base_kernel.lengthscale.cpu()
+    #                     .detach()
+    #                     .numpy()
+    #                 )
+    #             }
+    #         )
+
+    # def log_model_parameters(self):
+    #     param_names = [name for name, _ in self.model.named_parameters()]
+
+    #     if "covar_module.base_kernel.raw_lengthscale" in param_names:
+    #         self.logger.experiment.log(
+    #             {
+    #                 "covar_module.base_kernel.lengthscale_hist": wandb.Histogram(
+    #                     self.model.covar_module.base_kernel.lengthscale.cpu()
+    #                     .detach()
+    #                     .numpy()
+    #                 )
+    #             }
+    #         )
+
+    #     raw_transforms = {
+    #         "likelihood.noise_covar.raw_noise": "likelihood.noise",
+    #         "mean_module.raw_constant": "mean_module.constant",
+    #         "covar_module.raw_outputscale": "covar_module.outputscale",
+    #         "covar_module.base_kernel.raw_lengthscale": "covar_module.base_kernel.lengthscale",
+    #     }
+
+    #     self.log("likelihood.noise", self.model.likelihood.noise)
+    #     self.log("mean_module.constant", self.model.mean_module.constant)
+    #     # self.log("covar_module.outputscale", self.model.covar_module.outputscale)

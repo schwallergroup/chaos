@@ -103,8 +103,8 @@ class BOInitializer:
     def __init__(
         self,
         method: str = "kmedoids",
-        metric: str = None,
-        n_clusters: int = None,
+        metric: str = "jaccard",
+        n_clusters: int = 20,
         init: str = "random",
     ):
         self.n_clusters = n_clusters
