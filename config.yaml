@@ -1,25 +1,14 @@
-# pytorch_lightning==1.9.3
-seed_everything: 11
+# pytorch_lightning==2.0.6
+seed_everything: 20
 trainer:
-  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7f42807b61f0>
-  enable_checkpointing: true
-  callbacks: null
-  default_root_dir: null
-  gradient_clip_val: null
-  gradient_clip_algorithm: null
-  num_nodes: 1
-  num_processes: null
+  accelerator: cpu
+  strategy: auto
   devices: 1
-  gpus: null
-  auto_select_gpus: null
-  tpu_cores: null
-  ipus: null
-  enable_progress_bar: true
-  overfit_batches: 0.0
-  track_grad_norm: -1
-  check_val_every_n_epoch: 1
+  num_nodes: 1
+  precision: 32-true
+  logger: <pytorch_lightning.loggers.wandb.WandbLogger object at 0x7fee767b01c0>
+  callbacks: null
   fast_dev_run: false
-  accumulate_grad_batches: null
   min_epochs: 1
   max_steps: -1
   min_steps: null
@@ -28,30 +17,69 @@ trainer:
   limit_val_batches: null
   limit_test_batches: null
   limit_predict_batches: null
+  overfit_batches: 0.0
   val_check_interval: null
-  log_every_n_steps: 1
-  accelerator: cpu
-  strategy: null
-  sync_batchnorm: false
-  precision: 32
-  enable_model_summary: true
+  check_val_every_n_epoch: 1
   num_sanity_val_steps: 0
-  resume_from_checkpoint: null
-  profiler: null
-  benchmark: null
+  log_every_n_steps: 1
+  enable_checkpointing: null
+  enable_progress_bar: null
+  enable_model_summary: null
+  accumulate_grad_batches: 1
+  gradient_clip_val: null
+  gradient_clip_algorithm: null
   deterministic: null
-  reload_dataloaders_every_n_epochs: 0
-  auto_lr_find: false
-  replace_sampler_ddp: true
-  detect_anomaly: false
-  auto_scale_batch_size: false
-  plugins: null
-  amp_backend: null
-  amp_level: null
-  move_metrics_to_cpu: false
-  multiple_trainloader_mode: max_size_cycle
+  benchmark: null
   inference_mode: true
+  use_distributed_sampler: true
+  profiler: null
+  detect_anomaly: false
+  barebones: false
+  plugins: null
+  sync_batchnorm: false
+  reload_dataloaders_every_n_epochs: 0
+  default_root_dir: null
 model:
+  model_config:
+    class_path: chaos.surrogate_models.gp.SimpleGP
+    init_args:
+      train_x: null
+      train_y: null
+      likelihood:
+        class_path: gpytorch.likelihoods.GaussianLikelihood
+        init_args:
+          noise_prior: null
+          noise_constraint: null
+          batch_shape:
+            class_path: torch.Size
+      covar_module:
+        class_path: gpytorch.kernels.ScaleKernel
+        init_args:
+          base_kernel:
+            class_path: gpytorch.kernels.MaternKernel
+            init_args:
+              nu: 2.5
+              ard_num_dims: null
+              batch_shape: null
+              active_dims: null
+              lengthscale_prior: null
+              lengthscale_constraint: null
+              eps: 1.0e-06
+          outputscale_prior: null
+          outputscale_constraint: null
+          ard_num_dims: null
+          batch_shape: null
+          active_dims: null
+          lengthscale_prior: null
+          lengthscale_constraint: null
+          eps: 1.0e-06
+      mean_module: null
+      standardize: true
+      normalize: false
+      initial_noise_val: 1.0
+      noise_constraint: 1.0e-05
+      initial_outputscale_val: 2.0
+      initial_lengthscale_val: 0.5
   acquisition_class: ucb
   beta: 0.1
   top_n:
@@ -61,37 +89,59 @@ model:
   - 10
   batch_size: 1
   finetuning: true
+  enable_plotting: true
+  enable_logging_images: false
 data:
   data_path: data/additives_reactions.csv
   reaction_plate: 1
+  featurize_column: reaction_smiles
   exclude_n_largest: 0
   scale_by_baseline: false
-  representation: fragprints
+  representation: drfp
   feature_dimension: 512
-  bond_radius: 3
+  bond_radius: 5
 n_iters: 100
 n_trials: 20
 data_selection:
-  method: kmedoids
+  method: kmeans
   metric: jaccard
   n_clusters: 10
   init: random
-kernel:
-  class_path: chaos.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel
-  init_args:
-    metric: ''
-    ard_num_dims: null
-    batch_shape: null
-    active_dims: null
-    lengthscale_prior: null
-    lengthscale_constraint: null
-    eps: 1.0e-06
 surrogate_model:
-  class_path: chaos.surrogate_models.gp.GP
+  class_path: chaos.surrogate_models.gp.SimpleGP
   init_args:
-    noise_val: 0.015
-    fix_noise: false
+    likelihood:
+      class_path: gpytorch.likelihoods.GaussianLikelihood
+      init_args:
+        noise_prior: null
+        noise_constraint: null
+        batch_shape:
+          class_path: torch.Size
+    covar_module:
+      class_path: gpytorch.kernels.ScaleKernel
+      init_args:
+        base_kernel:
+          class_path: gpytorch.kernels.MaternKernel
+          init_args:
+            nu: 2.5
+            ard_num_dims: null
+            batch_shape: null
+            active_dims: null
+            lengthscale_prior: null
+            lengthscale_constraint: null
+            eps: 1.0e-06
+        outputscale_prior: null
+        outputscale_constraint: null
+        ard_num_dims: null
+        batch_shape: null
+        active_dims: null
+        lengthscale_prior: null
+        lengthscale_constraint: null
+        eps: 1.0e-06
+    mean_module: null
     standardize: true
     normalize: false
-    zero_mean: false
-    input_warping: false
+    initial_noise_val: 1.0
+    noise_constraint: 1.0e-05
+    initial_outputscale_val: 2.0
+    initial_lengthscale_val: 0.5
