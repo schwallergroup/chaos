@@ -17,6 +17,8 @@ from chaos.data.utils import find_duplicates, find_nan_rows
 
 import numpy as np
 from abc import ABC, abstractmethod
+from sklearn.metrics import pairwise_distances
+from sklearn.decomposition import PCA
 
 
 class Featurizer:
@@ -93,7 +95,7 @@ class BaseDataModule(pl.LightningDataModule, ABC):
         self.y = torch_delete_rows(self.y, duplicates)
 
     def split_data(self):
-        init_indexes = self.initializer.fit(self.x, exclude=None)
+        init_indexes, _ = self.initializer.fit(self.x, exclude=None)
 
         print(f"Selected reactions: {init_indexes}")
         self.train_indexes = init_indexes
@@ -245,9 +247,9 @@ class BOAdditivesDataModule(pl.LightningDataModule):
             n=self.exclude_n_largest
         )
 
-        init_indexes = self.initializer.fit(
-            self.x, exclude=baseline_reaction_index + high_yield_rxn_indexes
-        )
+        init_indexes, _ = self.initializer.fit(
+            self.x
+        )  # , exclude=baseline_reaction_index + high_yield_rxn_indexes)
 
         print(f"Selected reactions: {init_indexes}")
         self.train_indexes = init_indexes

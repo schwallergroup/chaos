@@ -15,6 +15,7 @@ from rxnfp.transformer_fingerprints import (
 )
 from sklearn.feature_extraction.text import CountVectorizer
 from transformers import AutoModelWithLMHead, AutoTokenizer, BertModel
+from rdkit import Chem
 
 
 # Reactions
@@ -172,24 +173,56 @@ def cddd(smiles):
     current_path = os.getcwd()
     os.chdir(Path(os.path.abspath(__file__)).parent)
     cddd = pd.read_csv("precalculated_featurisation/cddd_additives_descriptors.csv")
-    cddd_array = np.zeros((cddd.shape[0], 512))
-    for i, smile in enumerate(smiles):
-        row = cddd[cddd["smiles"] == smile][cddd.columns[3:]].values
-        cddd_array[i] = row
+    canonical_smiles_list = [
+        Chem.MolToSmiles(Chem.MolFromSmiles(smile), isomericSmiles=True, canonical=True)
+        for smile in smiles
+    ]
+    cddd["canonical"] = cddd["smiles"].apply(
+        lambda x: Chem.MolToSmiles(
+            Chem.MolFromSmiles(x), isomericSmiles=True, canonical=True
+        )
+    )
+    merged_df = pd.DataFrame({"canonical": canonical_smiles_list}).merge(
+        cddd, on="canonical", how="left"
+    )
+    descriptors = merged_df.drop(columns=["canonical", "smiles", "new_smiles"]).values
     os.chdir(current_path)
-    return cddd_array
+    return descriptors
+
+
+# def xtb(smiles):
+#     current_path = os.getcwd()
+#     os.chdir(Path(os.path.abspath(__file__)).parent)
+#     xtb = pd.read_csv("precalculated_featurisation/xtb_qm_descriptors_2.csv")
+#     xtb_array = np.zeros((xtb.shape[0], len(xtb.columns[:-2])))
+#     for i, smile in enumerate(smiles):
+#         row = xtb[xtb["additives"] == smile][xtb.columns[:-2]].values
+#         xtb_array[i] = row
+#     os.chdir(current_path)
+#     return xtb_array
 
 
 def xtb(smiles):
     current_path = os.getcwd()
     os.chdir(Path(os.path.abspath(__file__)).parent)
     xtb = pd.read_csv("precalculated_featurisation/xtb_qm_descriptors_2.csv")
-    xtb_array = np.zeros((xtb.shape[0], len(xtb.columns[:-2])))
-    for i, smile in enumerate(smiles):
-        row = xtb[xtb["Additive_Smiles"] == smile][xtb.columns[:-2]].values
-        xtb_array[i] = row
+    canonical_smiles_list = [
+        Chem.MolToSmiles(Chem.MolFromSmiles(smile), isomericSmiles=True, canonical=True)
+        for smile in smiles
+    ]
+    xtb["canonical"] = xtb["Additive_Smiles"].apply(
+        lambda x: Chem.MolToSmiles(
+            Chem.MolFromSmiles(x), isomericSmiles=True, canonical=True
+        )
+    )
+    merged_df = pd.DataFrame({"canonical": canonical_smiles_list}).merge(
+        xtb, on="canonical", how="left"
+    )
+    descriptors = merged_df.drop(
+        columns=["canonical", "Additive_Smiles", "UV210_Prod AreaAbs"]
+    ).values
     os.chdir(current_path)
-    return xtb_array
+    return descriptors
 
 
 def random_features():

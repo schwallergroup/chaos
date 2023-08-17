@@ -122,7 +122,7 @@ class WandbSaveConfigCallback(SaveConfigCallback):
 def cli_main():
     cli = MyLightningCli(
         model_class=BoModule,
-        datamodule_class=BOAdditivesDataModule,  # BaseDataModule,
+        datamodule_class=BaseDataModule,  # BOAdditivesDataModule,  #
         run=False,
         save_config_callback=WandbSaveConfigCallback,
         save_config_kwargs={"overwrite": True},
