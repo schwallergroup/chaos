@@ -78,12 +78,10 @@ class BoModule(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         train_x, train_y = self.data.train_x, self.data.train_y
         self.log("train/best_so_far", torch.max(train_y))
-
+        self.model = instantiate_class(
+            self.model_config, train_x=train_x, train_y=train_y
+        )
         if self.acquisition_class != "random":
-            self.model = instantiate_class(
-                self.model_config, train_x=train_x, train_y=train_y
-            )
-
             self.model.fit(train_x, train_y)
 
         heldout_x, heldout_y = self.data.heldout_x, self.data.heldout_y
