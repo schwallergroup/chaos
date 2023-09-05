@@ -191,15 +191,29 @@ def cli_main():
     wandb.init(id=run_id, resume="allow", project="additives-rebuttal")
 
     # Log metrics to wandb summary
-    wandb.run.summary["NLPD_top_5"] = nlpd_top_5
-    wandb.run.summary["R2_top_5"] = r2_top_5
-    wandb.run.summary["MAE_top_5"] = mae_top_5
-    wandb.run.summary["NLPD_bottom_5"] = nlpd_bottom_5
-    wandb.run.summary["R2_bottom_5"] = r2_bottom_5
-    wandb.run.summary["MAE_bottom_5"] = mae_bottom_5
-    wandb.run.summary["NLPD_all"] = nlpd_all
-    wandb.run.summary["R2_all"] = r2_all
-    wandb.run.summary["MAE_all"] = mae_all
+    # wandb.run.summary["NLPD_top_5"] = nlpd_top_5
+    # wandb.run.summary["R2_top_5"] = r2_top_5
+    # wandb.run.summary["MAE_top_5"] = mae_top_5
+    # wandb.run.summary["NLPD_bottom_5"] = nlpd_bottom_5
+    # wandb.run.summary["R2_bottom_5"] = r2_bottom_5
+    # wandb.run.summary["MAE_bottom_5"] = mae_bottom_5
+    # wandb.run.summary["NLPD_all"] = nlpd_all
+    # wandb.run.summary["R2_all"] = r2_all
+    # wandb.run.summary["MAE_all"] = mae_all
+
+    wandb.log(
+        {
+            "NLPD_top_5": nlpd_top_5,
+            "R2_top_5": r2_top_5,
+            "MAE_top_5": mae_top_5,
+            "NLPD_bottom_5": nlpd_bottom_5,
+            "R2_bottom_5": r2_bottom_5,
+            "MAE_bottom_5": mae_bottom_5,
+            "NLPD_all": nlpd_all,
+            "R2_all": r2_all,
+            "MAE_all": mae_all,
+        }
+    )
 
     # Save metrics to wandb
     wandb.save("metrics.csv")
