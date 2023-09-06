@@ -22,6 +22,8 @@ from chaos.gprotorch.metrics import (
     quantile_coverage_error,
 )
 
+from chaos.results import compute_top5_metrics
+
 
 class BoModule(pl.LightningModule):
     def __init__(
@@ -138,6 +140,17 @@ class BoModule(pl.LightningModule):
                 msll_train = mean_standardized_log_loss(pred_dist_train, train_y)
                 qce_train = quantile_coverage_error(pred_dist_train, train_y)
 
+                # Compute metrics for top 5%, bottom 5%, and all
+                nlpd_top_5, r2_top_5, mae_top_5 = compute_top5_metrics(
+                    self.model, self.data, "top_5"
+                )
+                nlpd_bottom_5, r2_bottom_5, mae_bottom_5 = compute_top5_metrics(
+                    self.model, self.data, "bottom_5"
+                )
+                nlpd_all, r2_all, mae_all = compute_top5_metrics(
+                    self.model, self.data, "all"
+                )
+
                 self.logger.experiment.log(
                     {
                         "train/mse": mse_train,
@@ -152,6 +165,15 @@ class BoModule(pl.LightningModule):
                         "valid/nlpd": nlpd_valid,
                         "valid/msll": msll_valid,
                         "valid/qce": qce_valid,
+                        "NLPD_top_5": nlpd_top_5,
+                        "R2_top_5": r2_top_5,
+                        "MAE_top_5": mae_top_5,
+                        "NLPD_bottom_5": nlpd_bottom_5,
+                        "R2_bottom_5": r2_bottom_5,
+                        "MAE_bottom_5": mae_bottom_5,
+                        "NLPD_all": nlpd_all,
+                        "R2_all": r2_all,
+                        "MAE_all": mae_all,
                     }
                 )
 
