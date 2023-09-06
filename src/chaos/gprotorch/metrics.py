@@ -18,11 +18,37 @@ from gpytorch.distributions import (
 pi = torch.tensor(pi)
 
 
+# def negative_log_predictive_density(
+#     pred_dist: MultivariateNormal,
+#     test_y: torch.Tensor,
+# ):
+#     return -pred_dist.log_prob(test_y.squeeze()) / test_y.size(0)
+
+
+# def negative_log_predictive_density(
+#     pred_dist: MultivariateNormal, test_y: torch.Tensor
+# ):
+#     return -torch.mean(pred_dist.log_prob(test_y.squeeze()))
+
+
+# def negative_log_predictive_density(
+#     pred_dist: MultivariateNormal, test_y: torch.Tensor
+# ):
+#     test_y = test_y.squeeze()
+#     log_prob = pred_dist.log_prob(test_y)
+#     nlpd = -torch.mean(log_prob)
+
+#     return nlpd
+
+import gpytorch
+
+
 def negative_log_predictive_density(
-    pred_dist: MultivariateNormal,
-    test_y: torch.Tensor,
+    pred_dist: MultivariateNormal, test_y: torch.Tensor
 ):
-    return -pred_dist.log_prob(test_y.squeeze()) / test_y.size(0)
+    return gpytorch.metrics.negative_log_predictive_density(
+        pred_dist, test_y.squeeze()
+    )
 
 
 def mean_standardized_log_loss(
@@ -40,12 +66,12 @@ def mean_standardized_log_loss(
     )
 
 
-def negative_log_predictive_density(
-    pred_dist: MultivariateNormal,
-    test_y: torch.Tensor,
-):
-    combine_dim = -2 if isinstance(pred_dist, MultitaskMultivariateNormal) else -1
-    return -pred_dist.log_prob(test_y) / test_y.shape[combine_dim]
+# def negative_log_predictive_density(
+#     pred_dist: MultivariateNormal,
+#     test_y: torch.Tensor,
+# ):
+#     combine_dim = -2 if isinstance(pred_dist, MultitaskMultivariateNormal) else -1
+#     return -pred_dist.log_prob(test_y) / test_y.shape[combine_dim]
 
 
 def quantile_coverage_error(
@@ -56,7 +82,9 @@ def quantile_coverage_error(
     if quantile <= 0 or quantile >= 100:
         raise NotImplementedError("Quantile must be between 0 and 100")
     standard_normal = torch.distributions.Normal(loc=0.0, scale=1.0)
-    deviation = standard_normal.icdf(torch.as_tensor(0.5 + 0.5 * (quantile / 100)))
+    deviation = standard_normal.icdf(
+        torch.as_tensor(0.5 + 0.5 * (quantile / 100))
+    )
     lower = pred_dist.mean.squeeze() - deviation * pred_dist.stddev.squeeze()
     upper = pred_dist.mean.squeeze() + deviation * pred_dist.stddev.squeeze()
     n_samples_within_bounds = (
