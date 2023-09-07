@@ -32,7 +32,6 @@ class BoModule(pl.LightningModule):
         model_config: dict = None,
         acquisition_class: str = "ucb",
         beta: float = 0.1,
-        top_n: List[int] = [1, 3, 5, 10],
         batch_size: int = 1,
         finetuning: bool = True,
         enable_plotting: bool = True,
@@ -43,7 +42,6 @@ class BoModule(pl.LightningModule):
         self.data = data
         self.model_config = model_config
         self.acquisition = None
-        self.top_n = top_n
         self.finetuning = finetuning
         self.acquisition_class = acquisition_class
         self.beta = beta
