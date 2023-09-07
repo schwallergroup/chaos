@@ -5,7 +5,6 @@ import numpy as np
 import torch
 from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn_extra.cluster import KMedoids
 from sklearn.decomposition import PCA
 
@@ -65,8 +64,6 @@ class KMeansInitializer(Initializer):
 
     def fit(self, x, exclude=None):
         x_init = torch_delete_rows(x, exclude)
-        # x_init_normalized = StandardScaler().fit_transform(x_init)
-        # x_init_normalized = x_init
         if self.use_pca:
             print("using pca")
             pca = PCA(n_components=self.use_pca, random_state=self.seed)
@@ -91,12 +88,6 @@ class KMeansInitializer(Initializer):
                 distances_to_centroids[min_distance_index, i] = np.inf
                 min_distance_index = np.argmin(distances_to_centroids[:, i])
             center_indices.append(min_distance_index)
-
-        # # Finding the nearest data point to each centroid
-        # center_indices = [
-        #     np.argmin(np.linalg.norm(x_init_normalized - centroid, axis=1))
-        #     for centroid in centroids
-        # ]
 
         labels = kmeans.labels_
         clusters = {}
@@ -156,7 +147,7 @@ class BOInitializer:
         metric: str = None,
         n_clusters: int = None,
         init: str = "random",
-        use_pca: int = 10,
+        use_pca: int = None,
         seed: int = None,
     ):
         self.n_clusters = n_clusters

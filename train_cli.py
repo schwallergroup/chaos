@@ -11,8 +11,8 @@ from pytorch_lightning.loggers import WandbLogger
 
 import wandb
 from chaos.bo.module import BoModule
-from chaos.data.module import BOAdditivesDataModule, BaseDataModule
-from chaos.surrogate_models.gp import SimpleGP, GP
+from chaos.data.module import BaseDataModule
+from chaos.surrogate_models.gp import SimpleGP
 from chaos.initialization.initializers import BOInitializer
 
 from chaos.utils import flatten
@@ -138,7 +138,7 @@ def cli_main():
     )
 
     cli.trainer.fit(cli.model)
-    # wandb.save('config.yaml')
+    # wandb.save("config.yaml")
     wandb.finish()
 
 

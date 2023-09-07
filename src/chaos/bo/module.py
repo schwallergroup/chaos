@@ -58,9 +58,6 @@ class BoModule(pl.LightningModule):
         )
         self.automatic_optimization = False
 
-    # def on_train_start(self) -> None:
-    #     self.prepare_logging_and_counters()
-
     def log_diversity_metrics(self, data_matrix):
         kernel_operator = self.model.covar_module(data_matrix)
         kernel_matrix = kernel_operator.evaluate()
@@ -98,7 +95,6 @@ class BoModule(pl.LightningModule):
                 predictions_train, var_train = self.model.predict(
                     train_x, observation_noise=True, return_var=True
                 )
-                # print(var_valid.sqrt(), torch.sqrt(var_train), "variance")
                 if self.enable_logging_images:
                     pred_vs_gt_fig = self.plotting_utils.plot_predicted_vs_actual(
                         predictions_train,
@@ -190,9 +186,6 @@ class BoModule(pl.LightningModule):
         self.data.log_quantile_counts(self.logger)
         self.logger.experiment.finish()
 
-    # def on_train_end(self) -> None:
-    #     self.save_summary()
-
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         return self.data.train_dataloader()
 
@@ -264,64 +257,3 @@ class BoModule(pl.LightningModule):
             value = attr.cpu().detach().numpy()
 
             self.logger.experiment.log({transformed_name: value})
-
-    # def log_model_parameters(self):
-    #     param_names = [name for name, _ in self.model.named_parameters()]
-
-    #     raw_transforms = {
-    #         "likelihood.noise_covar.raw_noise": "likelihood.noise",
-    #         "mean_module.raw_constant": "mean_module.constant",
-    #         "covar_module.raw_outputscale": "covar_module.outputscale",
-    #     }
-
-    #     for raw_name, log_name in raw_transforms.items():
-    #         if raw_name not in param_names:
-    #             continue
-
-    #         try:
-    #             attr = self.model
-    #             for part in log_name.split("."):
-    #                 attr = getattr(attr, part)
-
-    #             value = attr.cpu().detach().numpy()
-    #             self.logger.experiment.log({log_name: value})
-
-    #         except AttributeError:
-    #             # Handle the situation when the attribute doesn't exist
-    #             print(f"Attribute {log_name} doesn't exist in the model.")
-
-    #     if "covar_module.base_kernel.raw_lengthscale" in param_names:
-    #         self.logger.experiment.log(
-    #             {
-    #                 "covar_module.base_kernel.lengthscale_hist": wandb.Histogram(
-    #                     self.model.covar_module.base_kernel.lengthscale.cpu()
-    #                     .detach()
-    #                     .numpy()
-    #                 )
-    #             }
-    #         )
-
-    # def log_model_parameters(self):
-    #     param_names = [name for name, _ in self.model.named_parameters()]
-
-    #     if "covar_module.base_kernel.raw_lengthscale" in param_names:
-    #         self.logger.experiment.log(
-    #             {
-    #                 "covar_module.base_kernel.lengthscale_hist": wandb.Histogram(
-    #                     self.model.covar_module.base_kernel.lengthscale.cpu()
-    #                     .detach()
-    #                     .numpy()
-    #                 )
-    #             }
-    #         )
-
-    #     raw_transforms = {
-    #         "likelihood.noise_covar.raw_noise": "likelihood.noise",
-    #         "mean_module.raw_constant": "mean_module.constant",
-    #         "covar_module.raw_outputscale": "covar_module.outputscale",
-    #         "covar_module.base_kernel.raw_lengthscale": "covar_module.base_kernel.lengthscale",
-    #     }
-
-    #     self.log("likelihood.noise", self.model.likelihood.noise)
-    #     self.log("mean_module.constant", self.model.mean_module.constant)
-    #     # self.log("covar_module.outputscale", self.model.covar_module.outputscale)
