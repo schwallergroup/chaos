@@ -22,24 +22,6 @@ logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("PIL.PngImagePlugin").setLevel(logging.CRITICAL + 1)
 
 import copy
-
-
-def get_mol_or_rxn_smile(representation):
-    if representation in ["rxnfp", "drfp"]:
-        return "reaction_smiles"
-    return "Additive_Smiles"
-
-
-def get_distance_metric(kernel):
-    # if representation in ["drfp", "fingerprints", "fragprints"]:
-    if (
-        kernel
-        == "chaos.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel"
-    ):
-        return "jaccard"
-    return "euclidean"
-
-
 from argparse import Namespace
 
 
@@ -63,17 +45,8 @@ class MyLightningCli(LightningCLI):
         parser.add_argument("--n_trials", type=int, default=20)
 
         parser.add_class_arguments(BOInitializer, "data_selection")
-        # parser.add_subclass_arguments(BaseModel, "surrogate_model")
-        # parser.add_subclass_arguments(BaseModel, "surrogate_model")
         parser.add_subclass_arguments(SimpleGP, "surrogate_model")
-        # parser.add_subclass_arguments(GP, "surrogate_model")
 
-        # parser.link_arguments(
-        #     "data.representation",
-        #     "data.featurize_column",
-        #     apply_on="parse",
-        #     compute_fn=get_mol_or_rxn_smile,
-        # )
         parser.link_arguments(
             "data_selection", "data.initializer", apply_on="instantiate"
         )
@@ -138,7 +111,6 @@ def cli_main():
     )
 
     cli.trainer.fit(cli.model)
-    # wandb.save("config.yaml")
     wandb.finish()
 
 
