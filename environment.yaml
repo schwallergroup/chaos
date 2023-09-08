@@ -27,3 +27,4 @@ dependencies:
     - drfp
     - transformers
     - jsonargparse[signatures]
+    - watermark
