@@ -1,7 +1,5 @@
 import argparse
 import logging
-from botorch.models.model import Model as BaseModel
-from pytorch_lightning.callbacks import Timer
 from pytorch_lightning.cli import (
     LightningArgumentParser,
     LightningCLI,
@@ -20,9 +18,6 @@ from chaos.utils import convert_to_nested_dict
 
 logging.getLogger("PIL").setLevel(logging.WARNING)
 logging.getLogger("PIL.PngImagePlugin").setLevel(logging.CRITICAL + 1)
-
-import copy
-from argparse import Namespace
 
 
 def convert_to_dict(ns):
@@ -70,10 +65,8 @@ class MyLightningCli(LightningCLI):
         """Instantiates the classes and sets their attributes."""
         model_config = argparse.Namespace(**self.config["surrogate_model"])
         model_config_dict = convert_to_nested_dict(vars(model_config))
-        # model_config_dict = convert_to_dict(model_config)  # vars(model_config)
         self.config.model.model_config = model_config_dict
         self.config_init = self.parser.instantiate_classes(self.config)
-        # self.config_init.model.model_config = model_config_dict_copy
         self.datamodule = self._get(self.config_init, "data")
         self.model = self._get(self.config_init, "model")
         self._add_configure_optimizers_method_to_model(self.subcommand)

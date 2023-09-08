@@ -4,44 +4,35 @@ command:
   - ${program}
   - ${args}
 method: grid
-metric:
-  goal: minimize
-  name: sum_acq_values
 parameters:
-  data.bond_radius:
-    value: 3
-  data.feature_dimension:
+  data.data_path:
+    value: data/additives/additive_rxn_screening_plate_1.csv
+  data.featurizer.init_args.bond_radius:
+    value: 7
+  data.featurizer.init_args.nBits:
     value: 512
-  data.reaction_plate:
+  data.featurizer.init_args.representation:
     values:
-      - 1
-      - 2
-      - 3
-      - 4
-  data.representation:
-    value: fragprints
-  data_selection.init:
-    value: random
+      - drfp
+      - rxnfp
+  data.featurizer.init_args.task:
+    value: reaction_optimization
+  data.input_column:
+    value: rxn
+  data.target_column:
+    value: objective
   data_selection.method:
-    value: kmedoids
+    value: kmeans
   data_selection.metric:
     value: jaccard
   data_selection.n_clusters:
     value: 10
-  kernel.class_path:
-    value: chaos.gprotorch.kernels.fingerprint_kernels.tanimoto_kernel.TanimotoKernel
+  data_selection.use_pca:
+    value: 10
   model.acquisition_class:
     value: ucb
-  model.beta:
-    value: 0.1
-  model.finetuning:
-    value: true
-  model.top_n:
-    value:
-      - 1
-      - 3
-      - 5
-      - 10
+  n_iters:
+    value: 100
   seed_everything:
     values:
       - 1
@@ -65,7 +56,15 @@ parameters:
       - 19
       - 20
   surrogate_model.class_path:
-    value: chaos.surrogate_models.gp.GP
+    value: chaos.surrogate_models.gp.SimpleGP
+  surrogate_model.init_args.covar_module.class_path:
+    value: gpytorch.kernels.ScaleKernel
+  surrogate_model.init_args.covar_module.init_args.base_kernel.class_path:
+    value: gpytorch.kernels.matern_kernel.MaternKernel
+  surrogate_model.init_args.likelihood.class_path:
+    value: gpytorch.likelihoods.GaussianLikelihood
+  surrogate_model.init_args.normalize:
+    value: false
   surrogate_model.init_args.standardize:
     value: true
 program: train_cli.py
