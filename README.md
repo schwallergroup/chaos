@@ -13,20 +13,20 @@ please update the URLs accordingly -->
 
 # CHAOS: Chemical additives optimization screening
 
-**chaos** leverages Bayesian optimization to optimize additives for chemical reactions.
+**chaos** leverages Bayesian optimisation to optimise additives for chemical reactions.
 
-At the heart of CHAOS lies a robust Bayesian optimization engine. By harnessing the power of probabilistic modeling, we are able to efficiently search through the vast chemical space for optimal additives. Bayesian optimization balances exploration and exploitation, effectively narrowing down the vast chemical space to the most promising areas.
+At the heart of CHAOS lies a robust Bayesian optimisation engine. By harnessing the power of probabilistic modeling, we are able to efficiently search through the vast and diverse chemical space for optimal additives. Bayesian optimisation balances exploration and exploitation, effectively narrowing down the vast chemical space to the most promising areas.
 
 Buit on top of Gauche, it provides diverse compound and reaction representations together with custom Gaussian process kernel functions.
 
 <h1 align="left">
-  Bayesian optimization for additives screening - beyond one-hot encoding
+  Bayesian optimisation for additives screening - beyond one-hot encoding
 </h1>
 <p align="center">
   <img src="./docs/_static/additive-pipeline.png" width="100%">
 </p>
 
-Visualisation of Bayezian optimization for additive screening. Starting from the HTE dataset, we propagate the data through the reaction encoder to obtain suitable reaction representations. Using these representations, we organise the latent space and select the initial data points to set up the Gaussian process surrogate model. The bo loop then runs for a selected number of iterations during which we reach the global optimum in terms of the highest yield.
+Visualisation of Bayesian optimisation for additive screening. Starting from the HTE dataset, we propagate the data through the reaction encoder to obtain suitable reaction representations. Using these representations, we organise the latent space and select the initial data points to set up the Gaussian process surrogate model. The bo loop then runs for a selected number of iterations during which we reach the global optimum in terms of the highest yield.
 
 
 
@@ -34,19 +34,30 @@ Visualisation of Bayezian optimization for additive screening. Starting from the
 
 ## 🚀 Installation
 
-To install the package we recommend using a conda environment:
+Ensure the smooth running of CHAOS by setting up the required environment. We recommend using a conda environment for the installation. Find the detailed version information in requirements.txt and conda-requirements.txt.
 
 ```bash
 $ conda env create --file environment.yaml
 pip install rxnfp --no-deps
 ```
+## 📖 Tutorial
+Get hands-on experience with CHAOS through our detailed jupyter notebook tutorial. You can find it in the notebooks directory under the name CHAOS-tutorial.ipynb.
 
 ## 💪 Getting Started
-To configure an optimization routine check the config.yaml file, update parameters and use:
+Kickstart your optimization routine with CHAOS:
+
+1. **Configuration**: Set up your optimization routine using the config.yaml file. Update the parameters as needed.
+
+2. **Execution**: Run the following command to start the optimization process:
+
 ```python
 python train_cli.py --config run_config.yaml
 ```
 To run a wandb sweep use the parameters from sweep_config.yaml to initialize the sweep.
+
+Alternatively, use:
+
+**WANDB sweep**:  Initialize and run a WandB sweep using parameters from sweep_config.yaml.
 
 ## 👋 Contributing
 
