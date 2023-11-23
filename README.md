@@ -65,6 +65,10 @@ Contributions, whether filing an issue, making a pull request, or forking, are a
 
 ##  Attribution
 
+## 🙌 Acknowledgments
+
+This project structure and README format took inspiration from [@cthoyt's cookiecutter-snekpack](https://github.com/cthoyt/cookiecutter-snekpack). We are thankful for the tools provided by the community that assist in promoting best practices in software development.
+
 ### ⚖️ License
 
 The code in this package is licensed under the MIT License.
