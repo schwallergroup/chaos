@@ -21,15 +21,17 @@ if __name__ == "__main__":
                 "selfies",
                 "drfp",
                 "torch",
-                "rxnfp",
                 "gpytorch",
                 "lightning",
                 "botorch",
                 "scikit-learn-extra",
                 "wandb",
-                "matplotlib==3.2.2",
-                "scipy==1.4.1"
+                "matplotlib",
+                "scipy==1.14.0",
             ],
+            extras_require={
+                "rxnfp": ["scipy==1.14.0"],
+            },
         )
 
     except:  # noqa
