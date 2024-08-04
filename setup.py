@@ -27,10 +27,10 @@ if __name__ == "__main__":
                 "scikit-learn-extra",
                 "wandb",
                 "matplotlib",
-                "scipy==1.14.0",
+                "rxnfp @ git+https://github.com/schwallergroup/rxnfp.git"
             ],
             extras_require={
-                "rxnfp": ["scipy==1.14.0"],
+                "graphein": ["graphein"],
             },
         )
 
